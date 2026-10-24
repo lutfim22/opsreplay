@@ -35,6 +35,10 @@ export const opsEventSchema = z
   .refine((event) => event.source.provider !== "simulator" || event.source.simulated, {
     message: "simulator events must be flagged as simulated",
     path: ["source", "simulated"],
+  })
+  .refine((event) => event.source.provider !== "github" || !event.source.simulated, {
+    message: "github events must be flagged as real (not simulated)",
+    path: ["source", "simulated"],
   });
 
 export type OpsEvent = z.infer<typeof opsEventSchema>;

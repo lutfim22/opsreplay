@@ -29,5 +29,5 @@ Event ids must be stable and unique (e.g. `shelly:<deviceId>:<ts>:<method>`) so 
 - Network transport (Shelly RPC over WebSocket/HTTP, MQTT) and device discovery.
 - Credentials/auth, secrets handling, and persistence (state is browser-local).
 - Reconnect/backfill logic, clock-skew handling and rate limiting.
-- GitHub provider and linking events to incidents.
+- Linking GitHub events to incidents (the GitHub provider itself is implemented in `lib/github`).
 - AI-assisted anomaly detection (current rules are static thresholds).
