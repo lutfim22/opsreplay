@@ -1,6 +1,6 @@
 "use client";
 
-import { LayoutDashboard, PlugZap, ShieldAlert } from "lucide-react";
+import { GitBranch, LayoutDashboard, PlugZap, ShieldAlert } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
@@ -9,6 +9,7 @@ const links = [
   { href: "/", label: "Overview", icon: LayoutDashboard },
   { href: "/incidents", label: "Incidents", icon: ShieldAlert },
   { href: "/simulator", label: "Simulator", icon: PlugZap },
+  { href: "/github", label: "GitHub Activity", icon: GitBranch },
 ] as const;
 
 export function NavLinks({ orientation = "vertical" }: { orientation?: "vertical" | "horizontal" }) {
