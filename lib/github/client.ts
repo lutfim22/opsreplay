@@ -3,7 +3,15 @@ import { ingestEvents } from "@/lib/events/engine";
 import type { OpsEvent } from "@/lib/events/schema";
 import { normalizeAll } from "@/lib/events/source";
 import { createGitHubSource } from "@/lib/github/mapping";
-import { rawCommitsSchema, rawPullsSchema, rawRunsResponseSchema } from "@/lib/github/raw";
+import {
+  rawCommitSchema,
+  rawCommitsResponseSchema,
+  rawPullSchema,
+  rawPullsResponseSchema,
+  rawRepositorySchema,
+  rawRunSchema,
+  rawRunsResponseSchema,
+} from "@/lib/github/raw";
 import type { RawGitHubRecord } from "@/lib/github/raw";
 import type { RepoRef } from "@/lib/github/repo";
 
@@ -71,16 +79,30 @@ async function getJson<T>(url: string, schema: z.ZodType<T>, opts: FetchOptions)
   return parsed.data;
 }
 
+function parseRecords<T>(records: unknown[], schema: z.ZodType<T>): { records: T[]; invalid: number } {
+  const valid: T[] = [];
+  let invalid = 0;
+  for (const record of records) {
+    const parsed = schema.safeParse(record);
+    if (parsed.success) valid.push(parsed.data);
+    else invalid += 1;
+  }
+  return { records: valid, invalid };
+}
+
 /**
  * Fetches recent commits, PRs and workflow runs. Commits and PRs are required; a failure of the
  * Actions endpoint (e.g. disabled) is reported as a warning. Rate-limit/network errors always throw.
  */
 export async function fetchGitHubActivity(repo: RepoRef, opts: FetchOptions = {}): Promise<GitHubActivity> {
   const base = `${API}/repos/${encodeURIComponent(repo.owner)}/${encodeURIComponent(repo.repo)}`;
+  const repository = await getJson(base, rawRepositorySchema, opts);
+  if (repository.private) throw new GitHubApiError("not_found", "Repository not found.");
+
   const n = opts.perPage ?? 30;
   const [commits, pulls, runs] = await Promise.allSettled([
-    getJson(`${base}/commits?per_page=${n}`, rawCommitsSchema, opts),
-    getJson(`${base}/pulls?state=all&sort=updated&direction=desc&per_page=${n}`, rawPullsSchema, opts),
+    getJson(`${base}/commits?per_page=${n}`, rawCommitsResponseSchema, opts),
+    getJson(`${base}/pulls?state=all&sort=updated&direction=desc&per_page=${n}`, rawPullsResponseSchema, opts),
     getJson(`${base}/actions/runs?per_page=${n}`, rawRunsResponseSchema, opts),
   ]);
 
@@ -93,18 +115,24 @@ export async function fetchGitHubActivity(repo: RepoRef, opts: FetchOptions = {}
   if (commits.status === "rejected") throw commits.reason;
   if (pulls.status === "rejected") throw pulls.reason;
 
+  const parsedCommits = parseRecords(commits.value, rawCommitSchema);
+  const parsedPulls = parseRecords(pulls.value, rawPullSchema);
   const warnings: string[] = [];
   const records: RawGitHubRecord[] = [
-    ...commits.value.map((data) => ({ kind: "commit" as const, data })),
-    ...pulls.value.map((data) => ({ kind: "pull_request" as const, data })),
+    ...parsedCommits.records.map((data) => ({ kind: "commit" as const, data })),
+    ...parsedPulls.records.map((data) => ({ kind: "pull_request" as const, data })),
   ];
+  let invalidRecords = parsedCommits.invalid + parsedPulls.invalid;
   if (runs.status === "fulfilled") {
-    records.push(...runs.value.workflow_runs.map((data) => ({ kind: "workflow_run" as const, data })));
+    const parsedRuns = parseRecords(runs.value.workflow_runs, rawRunSchema);
+    invalidRecords += parsedRuns.invalid;
+    records.push(...parsedRuns.records.map((data) => ({ kind: "workflow_run" as const, data })));
   } else {
     warnings.push("Workflow runs are unavailable for this repository (GitHub Actions may be disabled).");
   }
 
   const { events, errors } = normalizeAll(createGitHubSource(repo, records));
-  if (errors.length > 0) warnings.push(`${errors.length} GitHub record(s) failed validation and were skipped.`);
+  invalidRecords += errors.length;
+  if (invalidRecords > 0) warnings.push(`${invalidRecords} GitHub record(s) failed validation and were skipped.`);
   return { events: ingestEvents([], events).events, warnings };
 }

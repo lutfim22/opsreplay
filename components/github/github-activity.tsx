@@ -48,6 +48,7 @@ function safeUrl(value: unknown): string | null {
 export function GitHubActivity() {
   const [input, setInput] = useState(DEFAULT_REPO);
   const [repo, setRepo] = useState(DEFAULT_REPO);
+  const [requestId, setRequestId] = useState(0);
   const [inputError, setInputError] = useState<string | null>(null);
   const [state, setState] = useState<State>({ status: "loading" });
 
@@ -78,7 +79,7 @@ export function GitHubActivity() {
     }
     void load();
     return () => controller.abort();
-  }, [repo]);
+  }, [repo, requestId]);
 
   function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -89,8 +90,9 @@ export function GitHubActivity() {
     }
     setInputError(null);
     const next = `${parsed.owner}/${parsed.repo}`;
-    if (next !== repo) setState({ status: "loading" });
+    setState({ status: "loading" });
     setRepo(next);
+    setRequestId((id) => id + 1);
   }
 
   return (

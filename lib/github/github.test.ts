@@ -20,12 +20,24 @@ const run = (id: number, updated: string, conclusion: string) => ({
   conclusion, run_number: id, head_branch: "main", head_sha: "abc", created_at: updated, updated_at: updated,
 });
 
-function mockFetch(routes: { commits?: Response | Error; pulls?: Response | Error; runs?: Response | Error }): typeof fetch {
+function mockFetch(routes: {
+  repository?: Response | Error;
+  commits?: Response | Error;
+  pulls?: Response | Error;
+  runs?: Response | Error;
+}): typeof fetch {
   return (async (input: RequestInfo | URL) => {
     const url = String(input);
-    const r = url.includes("/commits") ? routes.commits : url.includes("/pulls") ? routes.pulls : routes.runs;
+    const r = url.endsWith("/repos/o/r")
+      ? routes.repository
+      : url.includes("/commits")
+        ? routes.commits
+        : url.includes("/pulls")
+          ? routes.pulls
+          : routes.runs;
     if (r instanceof Error) throw r;
-    return r?.clone() ?? new Response("{}", { status: 404 });
+    if (r) return r.clone();
+    return url.endsWith("/repos/o/r") ? json({ private: false }) : new Response("{}", { status: 404 });
   }) as typeof fetch;
 }
 const json = (body: unknown, init?: ResponseInit) => new Response(JSON.stringify(body), init);
@@ -84,6 +96,31 @@ describe("fetchGitHubActivity", () => {
     expect(warnings[0]).toMatch(/failed validation/);
   });
 
+  it("retains valid records when individual activity records are malformed", async () => {
+    const { events, warnings } = await fetchGitHubActivity(repo, {
+      fetchFn: mockFetch({
+        commits: json([commit("c1", "2025-01-01T00:00:00Z"), null]),
+        pulls: json([pull(5, "2025-01-03T00:00:00Z"), null]),
+        runs: json({ workflow_runs: [run(9, "2025-01-02T12:00:00Z", "failure"), null] }),
+      }),
+    });
+    expect(events).toHaveLength(3);
+    expect(warnings).toEqual(["3 GitHub record(s) failed validation and were skipped."]);
+  });
+
+  it("does not request activity for private repositories, even with a token", async () => {
+    const requested: string[] = [];
+    const fetchFn = (async (input: RequestInfo | URL) => {
+      const url = String(input);
+      requested.push(url);
+      return url.endsWith("/repos/o/r") ? json({ private: true }) : json([]);
+    }) as typeof fetch;
+    const error = await fetchGitHubActivity(repo, { fetchFn, token: "tok" }).catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(GitHubApiError);
+    expect((error as GitHubApiError).kind).toBe("not_found");
+    expect(requested).toEqual(["https://api.github.com/repos/o/r"]);
+  });
+
   it.each([
     ["not_found", json({}, { status: 404 })],
     ["rate_limited", json({}, { status: 403, headers: { "x-ratelimit-remaining": "0", "x-ratelimit-reset": "1735689600" } })],
@@ -105,7 +142,8 @@ describe("fetchGitHubActivity", () => {
     const seen: string[] = [];
     const fetchFn = (async (_u: RequestInfo | URL, init?: RequestInit) => {
       seen.push(String((init?.headers as Record<string, string>).Authorization));
-      return json(String(_u).includes("/actions") ? { workflow_runs: [] } : []);
+      const url = String(_u);
+      return json(url.endsWith("/repos/o/r") ? { private: false } : url.includes("/actions") ? { workflow_runs: [] } : []);
     }) as typeof fetch;
     await fetchGitHubActivity(repo, { fetchFn, token: "tok" });
     expect(seen.every((h) => h === "Bearer " + "tok")).toBe(true);

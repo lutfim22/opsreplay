@@ -40,9 +40,10 @@ export const rawRunSchema = z.object({
   updated_at: z.iso.datetime({ offset: true }),
 });
 
-export const rawCommitsSchema = z.array(rawCommitSchema);
-export const rawPullsSchema = z.array(rawPullSchema);
-export const rawRunsResponseSchema = z.object({ workflow_runs: z.array(rawRunSchema) });
+export const rawRepositorySchema = z.object({ private: z.boolean() });
+export const rawCommitsResponseSchema = z.array(z.unknown());
+export const rawPullsResponseSchema = z.array(z.unknown());
+export const rawRunsResponseSchema = z.object({ workflow_runs: z.array(z.unknown()) });
 
 export type RawCommit = z.infer<typeof rawCommitSchema>;
 export type RawPull = z.infer<typeof rawPullSchema>;
