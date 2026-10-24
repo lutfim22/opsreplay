@@ -41,6 +41,9 @@ export default async function IncidentDetailPage({ params }: PageProps<"/inciden
         <p className="font-mono text-xs text-muted-foreground">{incident.id}</p>
         <h1 className="text-2xl font-semibold tracking-tight">{incident.title}</h1>
         <p className="mt-1 text-sm text-muted-foreground">{incident.summary}</p>
+        <Link href="/timeline" className="mt-2 inline-block text-sm text-indigo-600 hover:underline dark:text-indigo-400">
+          Open unified IoT + GitHub timeline
+        </Link>
       </div>
 
       <Card>
