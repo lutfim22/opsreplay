@@ -33,6 +33,7 @@ export function normalizeAll<TRaw>(source: EventSource<TRaw>, raws: readonly TRa
         errors.push({ index, message: parsed.error.message });
       } else if (
         parsed.data.source.provider !== source.ref.provider ||
+        parsed.data.source.name !== source.ref.name ||
         parsed.data.source.simulated !== source.ref.simulated
       ) {
         errors.push({ index, message: "event source does not match the originating EventSource" });

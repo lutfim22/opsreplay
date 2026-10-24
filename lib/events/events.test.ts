@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { detectAnomalies, ingestEvents, normalizeAll, opsEventSchema } from "@/lib/events";
+import type { EventSource } from "@/lib/events";
 import type { OpsEvent } from "@/lib/events";
 import { buildSimulatorScript, eventsUpTo, simulatorSource } from "@/lib/simulator/virtual-plug";
 
@@ -62,6 +63,44 @@ describe("anomaly rules", () => {
       make("2", "2025-01-01T00:00:10.000Z", { type: "device.online", deviceId: "d" }),
     ]);
     expect(a.map((x) => x.rule)).toEqual(["device_offline", "device_recovered"]);
+  });
+  it("isolates offline state by source and optional device ID", () => {
+    const source = (name: string) => ({ provider: "shelly" as const, name, simulated: false });
+    const a = detectAnomalies([
+      make("a-offline", "2025-01-01T00:00:00.000Z", { type: "device.offline", source: source("plug-a") }),
+      make("b-online", "2025-01-01T00:00:05.000Z", { type: "device.online", source: source("plug-b") }),
+      make("a-online", "2025-01-01T00:00:10.000Z", { type: "device.online", source: source("plug-a") }),
+      make("a-device-offline", "2025-01-01T00:00:15.000Z", { type: "device.offline", deviceId: "d", source: source("plug-a") }),
+      make("b-device-online", "2025-01-01T00:00:20.000Z", { type: "device.online", deviceId: "d", source: source("plug-b") }),
+      make("a-device-online", "2025-01-01T00:00:25.000Z", { type: "device.online", deviceId: "d", source: source("plug-a") }),
+    ]);
+    expect(a.map((event) => event.eventId)).toEqual([
+      "a-offline",
+      "a-online",
+      "a-device-offline",
+      "a-device-online",
+    ]);
+    expect(a.map((event) => event.rule)).toEqual([
+      "device_offline",
+      "device_recovered",
+      "device_offline",
+      "device_recovered",
+    ]);
+  });
+});
+
+describe("source normalization", () => {
+  it("rejects events with a different source name", () => {
+    const source: EventSource<null> = {
+      ref: { provider: "shelly", name: "plug-a", simulated: false },
+      readRaw: () => [null],
+      normalize: () => make("a", "2025-01-01T00:00:00.000Z", {
+        source: { provider: "shelly", name: "plug-b", simulated: false },
+      }),
+    };
+    const result = normalizeAll(source);
+    expect(result.events).toHaveLength(0);
+    expect(result.errors).toHaveLength(1);
   });
 });
 
