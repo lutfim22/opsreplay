@@ -165,7 +165,7 @@ export function extractSafeApiErrorDetails(error: unknown): SafeApiErrorDetails 
   if (typeof err.message === "string") {
     const message = err.message;
     const mentioned = SCHEMA_KEYWORDS.filter((keyword) =>
-      new RegExp(`(?<![A-Za-z0-9_$])${keyword.replace(/\$/g, "\\$")}(?![A-Za-z0-9_$])`).test(message),
+      new RegExp(`(?<![A-Za-z0-9_$])${keyword.replace(/[.*+?^${}()|[\]\\$]/g, "\\$&")}(?![A-Za-z0-9_$])`).test(message),
     );
     // Generic words such as "type" or "required" occur in many messages; only report distinctive keywords.
     const distinctive = mentioned.filter((keyword) => !["type", "title", "description", "default", "required", "items", "properties", "format"].includes(keyword));
