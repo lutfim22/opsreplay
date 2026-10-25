@@ -65,4 +65,53 @@ for demonstration only and does not mean the simulated events happened at that t
 - If GitHub is empty, rate-limited or unavailable, a warning is shown with simulated events only; GitHub events are never fabricated.
 - Only the latest 30 commits, PRs and workflow runs are loaded; GitHub timestamps are commit date, PR `updated_at` and workflow run `updated_at`.
 - Temporal proximity (including aligned time) is not evidence of causation; no correlation is performed.
-- IoT data is simulated only; no real hardware, database, authentication or AI analysis.
+- IoT data is simulated only; no real hardware, database or authentication. AI analysis is opt-in (see below).
+
+## AI investigation (Gemini, read-only)
+**Investigate with AI** on `/timeline` sends the events currently shown (after filters) to
+`POST /api/investigate`, which asks Google Gemini for a structured investigation: summary, observed facts,
+hypotheses (confidence low/medium/high, supporting events, reasoning, missing evidence), recommended read-only
+checks and limitations. It never runs commands and never changes repositories or devices.
+
+### How it stays grounded
+- Requests are validated with Zod (`OpsEvent` schema, max 200 events, max 512 KB, JSON only, same-origin only).
+- Gemini uses structured JSON output; the response is re-validated with Zod and **every referenced event id
+  (and any id-shaped text such as `sim-0001` or `github:owner/repo:commit:sha`) must belong to the submitted events**.
+  Otherwise the response is discarded and an error is shown. There is no fake or fallback analysis.
+- Each event is labelled `real_github` or `simulated_iot` and sent with its **original** timestamp. Demo Time
+  Alignment is only a display option and is never sent as evidence.
+- Event text (commit messages, titles, payloads) is untrusted: it is passed as escaped, size-bounded data inside a
+  delimited block, and the instructions live only in the server-side system prompt (`lib/investigation/prompt.ts`).
+- Secrets, prompts and model configuration stay on the server; events and API keys are not logged.
+
+### Configuration
+| Variable | Required | Purpose |
+| --- | --- | --- |
+| `GEMINI_API_KEY` | yes | Server-only Gemini API key (create one in [Google AI Studio](https://aistudio.google.com/apikey)). |
+| `GEMINI_MODEL` | no | Model id, default `gemini-2.5-flash`. Must match `gemini-*`; must support structured JSON output. |
+| `GEMINI_TIMEOUT_MS` | no | Upstream timeout, default `25000` (max `55000`). |
+| `INVESTIGATE_RATE_LIMIT_PER_MINUTE` | no | Per-IP limit, default `10`. |
+
+- **Local:** `cp .env.example .env.local`, set `GEMINI_API_KEY`, restart `pnpm dev`. `.env.local` is git-ignored.
+- **Vercel:** Project → Settings → Environment Variables → add `GEMINI_API_KEY` (and optionally the others) for
+  Production/Preview, mark the key *Sensitive*, then redeploy. Do **not** use a `NEXT_PUBLIC_` prefix.
+- Without a key the UI shows a "not set up" state and the endpoint returns `503`. CI and `pnpm test` use mocked
+  Gemini responses and need no key.
+
+### Cost, quota and abuse considerations
+- Every click is one Gemini request with up to ~200 events of input; use the filters to analyze less. The free tier
+  has low rate limits and quota errors are shown as such (HTTP 429); paid usage is billed per token by Google.
+- Events are sent to Google Gemini. Do not use it with data you are not allowed to share with that service.
+- The endpoint has no authentication. Protections: bounded body/event count, same-origin check, per-IP in-memory
+  rate limiting and a request timeout. Remaining risks: the limiter is per serverless instance (best effort) and trusts
+  `x-forwarded-for`, so a determined caller can exceed it or spend your quota; add authentication, a shared store
+  (e.g. Vercel KV/Upstash) or a WAF rule and a Google Cloud budget/quota cap before exposing it widely.
+- The server cannot verify that submitted events are authentic (there is no database); it only guarantees the analysis
+  refers to the events it was given.
+
+### Limitations
+- Hypotheses are not confirmed root causes; simulated telemetry is not real hardware evidence; temporal proximity,
+  including aligned time, is not causation.
+- LLM output can still misread or over-interpret valid events. Id checks prove traceability, not correctness; verify
+  against the linked records.
+- Long text values are truncated (500 chars) and deep payloads are trimmed before analysis; results are not stored.

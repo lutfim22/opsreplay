@@ -3,6 +3,7 @@
 import { ExternalLink, Cpu, GitCommit, GitPullRequest, Loader2, PlayCircle } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { Badge } from "@/components/ui/badge";
+import { InvestigationPanel } from "@/components/timeline/investigation-panel";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import type { EventSeverity } from "@/lib/events";
 import { DEFAULT_REPO, parseRepo } from "@/lib/github/repo";
@@ -88,7 +89,7 @@ function EntryRow({ entry, aligned }: { entry: TimelineEntry; aligned: boolean }
   const url = getGitHubUrl(event);
   const Icon = typeIcons[event.type] ?? Cpu;
   return (
-    <li className="space-y-1 rounded-lg border border-border p-3">
+    <li id={`timeline-event-${event.id}`} className="space-y-1 rounded-lg border border-border p-3">
       <div className="flex flex-wrap items-center gap-2 text-xs">
         <Icon className="size-4 text-muted-foreground" aria-hidden="true" />
         <span className="text-muted-foreground">{description.label}</span>
@@ -164,6 +165,7 @@ export function UnifiedTimeline() {
   const githubInput = useMemo(() => githubEventsOf(github), [github]);
   const model = useMemo(() => buildTimeline({ iot: simulated, github: githubInput, alignTime }), [simulated, githubInput, alignTime]);
   const visible = useMemo(() => filterTimeline(model.entries, filters), [model.entries, filters]);
+  const visibleEvents = useMemo(() => visible.map((entry) => entry.event), [visible]);
   const summary = useMemo(() => summarizeTimeline(visible), [visible]);
   const warning = githubFallbackWarning(github, model.entries.filter((e) => e.category === "github").map((e) => e.event));
   const loading = github === null;
@@ -284,6 +286,8 @@ export function UnifiedTimeline() {
           </div>
         </CardContent>
       </Card>
+
+      <InvestigationPanel events={visibleEvents} demoAlignment={alignTime && model.alignment.offsetMs !== null} />
 
       <Card>
         <CardHeader className="flex flex-wrap items-center gap-2">
