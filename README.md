@@ -87,4 +87,15 @@ A manual GitHub Actions workflow runs three live Gemini probes so API problems (
 
 `category` values: `success`; `invalid_json_response` / `schema_validation_failed` (reply received but unusable); `upstream_http_<status>` (Gemini returned an HTTP error, e.g. `upstream_http_504`, `403` for key problems); `client_deadline_abort` (our timeout fired first); `client_error` (other). If probe 1 passes and 3 fails, the prompt/schema size or latency is the likely cause; if all fail, check the key, model and quota.
 
+**Schema matrix (HTTP 400 on structured output):** set `mode` = `schema_matrix` (same `model` / `timeout_seconds` inputs, per case). From a phone: GitHub app → repository → *Actions* → *Gemini diagnostics* → *Run workflow* → branch `main`, choose `schema_matrix`, enter the model (for example `gemini-3.5-flash`), run, then open the run and expand the *Run Gemini schema matrix* step. It runs `pnpm diagnose:gemini:schema-matrix` (separate from the three probes above) with identical model and generation settings:
+
+| Case | Schema | Prompt |
+| --- | --- | --- |
+| `A_simple_json_no_schema` | none (control) | trivial |
+| `B_minimal_schema_one_string` | one required string property | trivial |
+| `C_essential_investigation_schema` | investigation structure and required fields, no length/count bounds or descriptions | full investigation |
+| `D_full_investigation_schema` | existing `investigationResponseJsonSchema` | full investigation |
+
+Each line reports `httpStatus`, `category`, `schemaKeywords` and `undocumentedKeywords` (keywords the installed `@google/genai` `responseJsonSchema` docs do not list as supported; currently `minLength` and `maxLength`, used only by D). For HTTP 400 it adds `errorDetails` from a strict allowlist: the Google error `status` enum, `reason` enums, `fieldViolations` field paths and which schema keyword names the message mentions. Raw errors, messages, headers, prompts, model output and the key are never printed. Reading it: if A passes, B passes, C passes and D fails, the extra constraints in D (`minLength`/`maxLength` are the prime suspects, then `description` text and the `minItems`/`maxItems` bounds) are plausible causes; if B or C fail too, the structure (nested arrays of objects, `enum`) or `responseJsonSchema` itself for that model is implicated. These are hypotheses until a live run confirms them.
+
 **Relation to the production investigation request (PR #7):** the schema (`investigationResponseJsonSchema`), system instruction and user prompt are verbatim copies in `scripts/gemini-diagnostics-contract.ts`, so they must be kept in sync until the feature lands. Differences: the diagnostics default to `gemini-3.8-flash` while PR #7's app default is `gemini-2.5-flash` (the model is never changed silently; pass `model` to match); events come from the simulator rather than user selection, with Demo Time Alignment off; there is no request validation, rate limiting or evidence-id check; one attempt only (no retries); the timeout is configurable up to 55 s versus 25 s in the app; and output is only validated against the result schema.
