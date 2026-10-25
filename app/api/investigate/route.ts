@@ -3,6 +3,7 @@ import { readConfig } from "@/lib/investigation/config";
 import { ERROR_STATUS, InvestigationError } from "@/lib/investigation/errors";
 import { createGeminiGenerator } from "@/lib/investigation/gemini";
 import { clientKey, createRateLimiter } from "@/lib/investigation/rate-limit";
+import { reserveQuota, vercelClientKey } from "@/lib/investigation/quota";
 import { assertSameOrigin, parseInvestigateRequest } from "@/lib/investigation/request";
 import { investigate } from "@/lib/investigation/service";
 
@@ -38,13 +39,19 @@ export async function POST(request: Request) {
     const config = readConfig();
     assertSameOrigin(request);
 
-    const limit = rateLimiter(config.rateLimitPerMinute).check(clientKey(request.headers));
-    if (!limit.allowed) throw new InvestigationError("rate_limited", { retryAfterSeconds: limit.retryAfterSeconds });
     if (!config.apiKey) throw new InvestigationError("not_configured");
-
     const body = await parseInvestigateRequest(request);
-    const result = await investigate(body, createGeminiGenerator(config.apiKey), config);
-    return NextResponse.json(result, { headers: { "Cache-Control": "no-store" } });
+    if (!config.quota && !config.localBypass) throw new InvestigationError("quota_unavailable");
+    let release: (() => Promise<void>) | undefined;
+    if (config.quota) release = await reserveQuota(config.quota, vercelClientKey(request.headers, config.vercel));
+    else {
+      const limit = rateLimiter(config.rateLimitPerMinute).check(clientKey(request.headers));
+      if (!limit.allowed) throw new InvestigationError("rate_limited", { retryAfterSeconds: limit.retryAfterSeconds });
+    }
+    try {
+      const result = await investigate(body, createGeminiGenerator(config.apiKey), config);
+      return NextResponse.json(result, { headers: { "Cache-Control": "no-store" } });
+    } finally { await release?.(); }
   } catch (error) {
     if (error instanceof InvestigationError) return failure(error);
     console.error("[investigate] unexpected error", { name: error instanceof Error ? error.name : typeof error });

@@ -136,6 +136,7 @@ export const INVESTIGATION_ERROR_KINDS = [
   "forbidden",
   "rate_limited",
   "not_configured",
+  "quota_unavailable",
   "timeout",
   "quota",
   "upstream",

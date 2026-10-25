@@ -454,6 +454,7 @@ describe("POST /api/investigate", () => {
     vi.resetModules();
     generateContent.mockReset();
     vi.unstubAllEnvs();
+    vi.stubEnv("INVESTIGATE_LOCAL_DEV_BYPASS", "1");
     vi.doMock("@google/genai", async () => {
       const actual = await vi.importActual<typeof import("@google/genai")>("@google/genai");
       return {
@@ -476,6 +477,61 @@ describe("POST /api/investigate", () => {
     expect(res.status).toBe(503);
     expect(await res.json()).toMatchObject({ ok: false, error: { kind: "not_configured" } });
     expect(generateContent).not.toHaveBeenCalled();
+  });
+
+  it("fails closed in production without Redis or when the quota service denies a request", async () => {
+    vi.stubEnv("NODE_ENV", "production");
+    vi.stubEnv("GEMINI_API_KEY", "test-key");
+    const missing = await post({ events: EVENTS });
+    expect(missing.status).toBe(503);
+    expect(await missing.json()).toMatchObject({ error: { kind: "quota_unavailable" } });
+    vi.stubEnv("UPSTASH_REDIS_REST_URL", "https://example.upstash.io");
+    vi.stubEnv("UPSTASH_REDIS_REST_TOKEN", "SECRET_TOKEN");
+    const fetcher = vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(JSON.stringify({ result: [0, 42] })));
+    const denied = await post({ events: EVENTS });
+    expect(denied.status).toBe(429);
+    expect(denied.headers.get("retry-after")).toBe("42");
+    expect(JSON.stringify(await denied.json())).not.toContain("SECRET_TOKEN");
+    expect(fetcher).toHaveBeenCalledTimes(1);
+    expect(generateContent).not.toHaveBeenCalled();
+    fetcher.mockRestore();
+  });
+
+  it("does not reserve quota for malformed input or call Gemini after a Redis failure", async () => {
+    vi.stubEnv("NODE_ENV", "production");
+    vi.stubEnv("GEMINI_API_KEY", "test-key");
+    vi.stubEnv("UPSTASH_REDIS_REST_URL", "https://example.upstash.io");
+    vi.stubEnv("UPSTASH_REDIS_REST_TOKEN", "SECRET_TOKEN");
+    const fetcher = vi.spyOn(globalThis, "fetch").mockRejectedValue(new Error("SECRET_TOKEN connection failed"));
+    expect((await post({ events: [] })).status).toBe(400);
+    expect(fetcher).not.toHaveBeenCalled();
+    const failed = await post({ events: EVENTS });
+    expect(failed.status).toBe(503);
+    expect(JSON.stringify(await failed.json())).not.toContain("SECRET_TOKEN");
+    expect(generateContent).not.toHaveBeenCalled();
+    fetcher.mockRestore();
+  });
+
+  it("releases the shared concurrency lease after success, Gemini failure, and timeout", async () => {
+    vi.stubEnv("NODE_ENV", "production");
+    vi.stubEnv("GEMINI_API_KEY", "test-key");
+    vi.stubEnv("UPSTASH_REDIS_REST_URL", "https://example.upstash.io");
+    vi.stubEnv("UPSTASH_REDIS_REST_TOKEN", "SECRET_TOKEN");
+    vi.stubEnv("GEMINI_TIMEOUT_MS", "20");
+    const commands: string[] = [];
+    const fetcher = vi.spyOn(globalThis, "fetch").mockImplementation(async (_url, init) => {
+      const args = JSON.parse(String(init?.body)) as string[];
+      commands.push(args[0] ?? "");
+      return new Response(JSON.stringify({ result: args[0] === "EVAL" ? [1, 0] : 1 }));
+    });
+    generateContent.mockResolvedValueOnce({ text: JSON.stringify(validResult()) });
+    expect((await post({ events: EVENTS })).status).toBe(200);
+    generateContent.mockRejectedValueOnce(new Error("upstream failure"));
+    expect((await post({ events: EVENTS })).status).toBe(502);
+    generateContent.mockImplementationOnce(() => new Promise(() => undefined));
+    expect((await post({ events: EVENTS })).status).toBe(504);
+    expect(commands).toEqual(["EVAL", "ZREM", "EVAL", "ZREM", "EVAL", "ZREM"]);
+    fetcher.mockRestore();
   });
 
   it("returns a validated investigation on success", async () => {

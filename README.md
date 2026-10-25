@@ -91,13 +91,19 @@ checks and limitations. It never runs commands and never changes repositories or
 | `GEMINI_API_KEY` | yes | Server-only Gemini API key (create one in [Google AI Studio](https://aistudio.google.com/apikey)). |
 | `GEMINI_MODEL` | no | Model id, default `gemini-2.5-flash`. Must match `gemini-*`; must support structured JSON output. |
 | `GEMINI_TIMEOUT_MS` | no | Total upstream deadline, default `25000` (max `55000`; the route allows 60 seconds). |
-| `INVESTIGATE_RATE_LIMIT_PER_MINUTE` | no | Per-IP limit, default `10`. |
+| `UPSTASH_REDIS_REST_URL` | production | HTTPS REST endpoint of an Upstash Redis database. |
+| `UPSTASH_REDIS_REST_TOKEN` | production | Server-only REST token for that database. |
+| `INVESTIGATE_LOCAL_DEV_BYPASS` | local only | Set to `1` to run locally without Redis. Production ignores it. |
 
-- **Local:** `cp .env.example .env.local`, set `GEMINI_API_KEY`, restart `pnpm dev`. `.env.local` is git-ignored.
-- **Vercel:** Project → Settings → Environment Variables → add `GEMINI_API_KEY` (and optionally the others) for
-  Production/Preview, mark the key *Sensitive*, then redeploy. Do **not** use a `NEXT_PUBLIC_` prefix.
+- **Local:** `cp .env.example .env.local`, set `GEMINI_API_KEY` and either both Upstash values or `INVESTIGATE_LOCAL_DEV_BYPASS=1`, then restart `pnpm dev`. The local bypass uses a per-process limiter only. `.env.local` is git-ignored.
+- **Vercel:** Create an Upstash Redis database, set `GEMINI_API_KEY`, `UPSTASH_REDIS_REST_URL`, and `UPSTASH_REDIS_REST_TOKEN` as server-side Vercel environment variables, and redeploy. Use separate Redis databases for Production and Preview so previews cannot consume production allowance. Mark secrets Sensitive. Do **not** use a `NEXT_PUBLIC_` prefix. Requests fail closed with 503 if Redis configuration is missing or the service is unavailable.
 - Without a key the UI shows a "not set up" state and the endpoint returns `503`. CI and `pnpm test` use mocked
   Gemini responses and need no key.
+
+### Quota and spending controls
+The server reserves a request in Upstash Redis before calling Gemini. One atomic Redis script enforces 100 requests globally per UTC day, 5 per client per minute, 15 per client per UTC day, and 3 concurrent Gemini calls globally. Denials return 429 and `Retry-After`. Redis uses its own clock. A failed Gemini call still spends one request allowance; up to three Gemini attempts may occur within one accepted request. Input is capped at 512 KiB/200 events, the prompt at 256 KiB, output at 8192 tokens, and the upstream deadline at 55 seconds. These are **request allowances, not a guaranteed cost cap**.
+
+On direct Vercel deployments, the app uses the platform-supplied `X-Forwarded-For` address for client buckets. Do not place an untrusted proxy in front of Vercel without reviewing its forwarded-header behavior. Missing or ambiguous addresses use one shared anonymous bucket; the global allowance always applies. Origin checks only reduce cross-site browser requests and are not authentication. Anonymous visitors can still share an IP, rotate addresses, or make direct requests. Use Google AI Studio/Cloud project quotas and billing alerts appropriate to the demo; billing alerts do not enforce a hard spending cap. If a provider hard cap is unavailable, remaining spend risk is bounded only by request allowances, token/deadline limits, and provider quota. Upstash REST calls add one reservation and one lease release per accepted request; monitor Redis availability and quota usage. No paid Upstash resource is created by this code.
 
 ## Gemini diagnostics (manual, no API endpoint)
 
