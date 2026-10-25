@@ -109,6 +109,7 @@ export async function runProbe(ai: GoogleGenAI, probe: Probe, model: string, tim
     } catch {
       validOutput = false;
     }
+    if (!validOutput) process.exitCode = 1;
     console.log(
       JSON.stringify({
         probe: probe.name,
