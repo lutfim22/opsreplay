@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
+import { parse } from "yaml";
 
 const workflowPath = ".github/workflows/pr7-verification.yml";
 const expectedActions = [
@@ -10,14 +11,27 @@ const expectedActions = [
 ];
 const immutableAction = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+(?:\/[A-Za-z0-9_./-]+)?@[a-f0-9]{40}$/;
 
-function expectReviewedActions(workflow: string) {
-  if (/\{[^}\n]*\buses\s*:/m.test(workflow) || /(?:^|[\s,{])["']uses["']\s*:/m.test(workflow)) {
-    throw new Error("Unsupported YAML syntax for action references");
+function collectUses(value: unknown, references: unknown[] = [], seen = new Set<object>()): unknown[] {
+  if (!value || typeof value !== "object" || seen.has(value)) return references;
+  seen.add(value);
+
+  if (Array.isArray(value)) {
+    for (const item of value) collectUses(item, references, seen);
+    return references;
   }
 
-  const actions = [...workflow.matchAll(/^\s*(?:-\s*)?uses:\s+([^\s#]+)/gm)]
-    .map((match) => match[1])
-    .filter((action) => !action.startsWith("./"));
+  for (const [key, child] of Object.entries(value)) {
+    if (key === "uses") references.push(child);
+    collectUses(child, references, seen);
+  }
+  return references;
+}
+
+function expectReviewedActions(workflow: string) {
+  const actions = collectUses(parse(workflow)).filter((action) => {
+    if (typeof action !== "string") throw new Error("Action reference must be a string");
+    return !action.startsWith("./");
+  }) as string[];
 
   for (const action of actions) {
     if (!immutableAction.test(action)) throw new Error(`External action is not pinned to a full commit SHA: ${action}`);
@@ -45,7 +59,7 @@ describe("PR7 verification workflow security", () => {
       "jobs:\n  unreviewed-reusable-workflow: { uses: 'example/action/.github/workflows/check.yml@v1' }\n",
     );
 
-    expect(() => expectReviewedActions(workflow)).toThrow("Unsupported YAML syntax for action references");
+    expect(() => expectReviewedActions(workflow)).toThrow("External action is not pinned to a full commit SHA");
   });
 
   it.each([
@@ -54,6 +68,15 @@ describe("PR7 verification workflow security", () => {
   ])("rejects a quoted uses key in a %s", (_kind, job) => {
     const workflow = readFileSync(workflowPath, "utf8").replace("jobs:\n", `jobs:\n${job}`);
 
-    expect(() => expectReviewedActions(workflow)).toThrow("Unsupported YAML syntax for action references");
+    expect(() => expectReviewedActions(workflow)).toThrow("External action is not pinned to a full commit SHA");
+  });
+
+  it.each([
+    ["job", "  unreviewed-job:\n    uses : example/action/.github/workflows/check.yml@v1\n"],
+    ["step", "  unreviewed-job:\n    steps:\n      - name: Unreviewed\n        uses : example/action@v1\n"],
+  ])("rejects whitespace before the uses colon in a %s", (_kind, job) => {
+    const workflow = readFileSync(workflowPath, "utf8").replace("jobs:\n", `jobs:\n${job}`);
+
+    expect(() => expectReviewedActions(workflow)).toThrow("External action is not pinned to a full commit SHA");
   });
 });
