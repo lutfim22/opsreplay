@@ -119,9 +119,19 @@ describe("local Gemini diagnostic error classification", () => {
     expect(generateContent.mock.calls[0]?.[0].config.responseJsonSchema).toBeUndefined();
     expect(generateContent.mock.calls[1]?.[0].config.responseJsonSchema).toBe(investigationResponseJsonSchema);
     expect(generateContent.mock.calls[2]?.[0].config.systemInstruction).toBe(SYSTEM_INSTRUCTION);
+    for (const [call] of generateContent.mock.calls) {
+      expect(call.model).toBe("gemini-3.8-flash");
+      expect(call.config).toMatchObject({
+        responseMimeType: "application/json",
+        thinkingConfig: { thinkingLevel: "LOW" },
+        maxOutputTokens: 8192,
+        httpOptions: { retryOptions: { attempts: 1, httpStatusCodes: [] } },
+      });
+    }
     const results = log.mock.calls.map(([line]) => JSON.parse(String(line)) as Record<string, unknown>);
     expect(results).toHaveLength(3);
     expect(results.every((result) => result.category === "success")).toBe(true);
+    expect(results.every((result) => Object.keys(result).sort().join(",") === "category,durationMs,eventCount,httpStatus,model,outcome,probe,promptBytes")).toBe(true);
     expect(JSON.stringify(results)).not.toContain(powerSpike.id);
     expect(JSON.stringify(results)).not.toContain(powerSpike.timestamp);
   });

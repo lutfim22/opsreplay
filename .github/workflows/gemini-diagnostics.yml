@@ -1,0 +1,60 @@
+name: Gemini diagnostics
+
+on:
+  workflow_dispatch:
+    inputs:
+      model:
+        description: Gemini model id
+        required: false
+        type: string
+        default: gemini-3.8-flash
+      timeout_seconds:
+        description: Per-probe timeout in seconds (1-55)
+        required: false
+        type: string
+        default: "45"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: gemini-diagnostics-${{ github.repository }}
+  cancel-in-progress: false
+
+jobs:
+  diagnose:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: main
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Validate diagnostic inputs
+        id: inputs
+        env:
+          MODEL: ${{ inputs.model }}
+          TIMEOUT_SECONDS: ${{ inputs.timeout_seconds }}
+        run: |
+          if [[ ! "$MODEL" =~ ^gemini-[a-z0-9][a-z0-9.-]{0,63}$ ]]; then
+            echo "Model must be a valid gemini-* model id."
+            exit 1
+          fi
+          if [[ ! "$TIMEOUT_SECONDS" =~ ^[0-9]{1,2}$ ]] || (( TIMEOUT_SECONDS < 1 || TIMEOUT_SECONDS > 55 )); then
+            echo "timeout_seconds must be between 1 and 55."
+            exit 1
+          fi
+          echo "model=$MODEL" >> "$GITHUB_OUTPUT"
+          echo "timeout_ms=$((TIMEOUT_SECONDS * 1000))" >> "$GITHUB_OUTPUT"
+      - name: Run Gemini probes
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GEMINI_MODEL: ${{ steps.inputs.outputs.model }}
+          GEMINI_TIMEOUT_MS: ${{ steps.inputs.outputs.timeout_ms }}
+        run: pnpm diagnose:gemini

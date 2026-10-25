@@ -113,6 +113,20 @@ account, region/network or upstream availability; if A succeeds but B fails, inv
 succeeds but C fails, investigate full prompt/context size or model workload. These comparisons narrow the cause but
 do not prove a provider-side root cause.
 
+#### Run from GitHub Actions (mobile-friendly)
+1. In the repository, open **Settings → Secrets and variables → Actions → New repository secret**.
+   Add `GEMINI_API_KEY`; do not put the key in workflow inputs or logs.
+2. Open **Actions → Gemini diagnostics → Run workflow**. GitHub only offers manual dispatch for workflows
+   present on the repository's default branch, so this workflow must first reach `main`.
+3. Keep the branch set to `main`, optionally enter a `gemini-*` model id and a timeout from 1 to 55 seconds,
+   then tap **Run workflow**. The default model is `gemini-3.8-flash` and the default per-probe timeout is 45 seconds.
+4. Open the workflow run and inspect the three sanitized JSON result lines. Each probe can take up to the selected
+   timeout; the job is limited to five minutes. Runs are serialized to prevent concurrent Gemini calls.
+
+The workflow checks out `main` and only runs on `main`; dispatches targeting other branches are skipped. This avoids
+passing the repository secret to pull-request branch code. If no repository secret is configured, the diagnostic
+script exits without sending requests.
+
 ### Cost, quota and abuse considerations
 - Requests accept at most 200 events and a 512 KiB body; the serialized model prompt is capped at 256 KiB.
   Transient HTTP 503/504 failures receive up to two retries with exponential backoff and jitter inside the
