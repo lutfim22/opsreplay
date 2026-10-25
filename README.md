@@ -66,3 +66,23 @@ for demonstration only and does not mean the simulated events happened at that t
 - Only the latest 30 commits, PRs and workflow runs are loaded; GitHub timestamps are commit date, PR `updated_at` and workflow run `updated_at`.
 - Temporal proximity (including aligned time) is not evidence of causation; no correlation is performed.
 - IoT data is simulated only; no real hardware, database, authentication or AI analysis.
+
+## Gemini diagnostics (manual, no API endpoint)
+
+A manual GitHub Actions workflow runs three live Gemini probes so API problems (for example HTTP 504s) can be diagnosed without a local machine. It is `workflow_dispatch` only, runs on `main`, has read-only permissions and exposes no public endpoint. CI never calls Gemini.
+
+**Set up the secret (smartphone, GitHub app or mobile web):** repository *Settings → Secrets and variables → Actions → New repository secret*, name `GEMINI_API_KEY`.
+
+**Run:** *Actions → Gemini diagnostics → Run workflow*, branch `main`. Inputs: `model` (default `gemini-3.8-flash`, must match `gemini-*`) and `timeout_seconds` (default `45`, 1–55, per probe).
+
+**Read the results:** the log prints one JSON line per probe with `probe`, `model`, `durationMs`, `httpStatus`, `category`, `outcome`, `promptBytes`, `eventCount`. Prompts, event ids and model output are never printed.
+
+| Probe | What it tests |
+| --- | --- |
+| `simple_json_without_schema` | Basic connectivity, key and model with a trivial JSON reply |
+| `simple_json_with_investigation_schema` | Same, plus the investigation response schema |
+| `three_simulated_events_full_investigation` | Full investigation system prompt with three simulator events (power spike, offline, online) and the schema |
+
+`category` values: `success`; `invalid_json_response` / `schema_validation_failed` (reply received but unusable); `upstream_http_<status>` (Gemini returned an HTTP error, e.g. `upstream_http_504`, `403` for key problems); `client_deadline_abort` (our timeout fired first); `client_error` (other). If probe 1 passes and 3 fails, the prompt/schema size or latency is the likely cause; if all fail, check the key, model and quota.
+
+**Relation to the production investigation request (PR #7):** the schema (`investigationResponseJsonSchema`), system instruction and user prompt are verbatim copies in `scripts/gemini-diagnostics-contract.ts`, so they must be kept in sync until the feature lands. Differences: the diagnostics default to `gemini-3.8-flash` while PR #7's app default is `gemini-2.5-flash` (the model is never changed silently; pass `model` to match); events come from the simulator rather than user selection, with Demo Time Alignment off; there is no request validation, rate limiting or evidence-id check; one attempt only (no retries); the timeout is configurable up to 55 s versus 25 s in the app; and output is only validated against the result schema.
