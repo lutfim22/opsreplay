@@ -46,7 +46,9 @@ is only a reference, not machine-verifiable approval.
 5. Review both control and target source, lockfile and dependencies; installation
    occurs without provider secrets and uses `--ignore-scripts`. The token is
    contents-read-only and checkout does not persist Git credentials. Provider
-   secrets enter only the probe step. Keep runner debug tracing disabled.
+   secrets enter only the probe step. External actions are pinned to full commits
+   resolved from their official upstream release tags; review every future SHA
+   update explicitly. Keep runner debug tracing disabled.
 
 ## Execution contract (future approval only)
 
