@@ -1,7 +1,9 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ApiError } from "@google/genai";
 import {
+  addKeywordsFromSource,
   collectSchemaKeywords,
+  ESSENTIAL_INVESTIGATION_SCHEMA,
   createMatrixCases,
   extractSafeApiErrorDetails,
   removeStringLengthBounds,
@@ -30,9 +32,9 @@ function logged(spy: { mock: { calls: unknown[][] } }) {
 }
 
 describe("schema matrix cases", () => {
-  it("defines A-E with no schema for the control and the full schema at D", () => {
+  it("defines A-G with no schema for the control and the full schema at D", () => {
     const cases = createMatrixCases();
-    expect(cases.map((c) => c.name.charAt(0))).toEqual(["A", "B", "C", "D", "E"]);
+    expect(cases.map((c) => c.name.charAt(0))).toEqual(["A", "B", "C", "D", "E", "F", "G"]);
     expect(cases[4].name).toBe("E_full_schema_without_string_length_bounds");
     expect(cases[4].simplePrompt).toBe(cases[3].simplePrompt);
     expect(cases[0].schema).toBeUndefined();
@@ -44,6 +46,61 @@ describe("schema matrix cases", () => {
     expect(undocumentedKeywords(c.schema)).toEqual([]);
     expect(collectSchemaKeywords(d.schema)).toEqual(expect.arrayContaining(["minLength", "maxLength", "maxItems", "minItems", "description"]));
     expect(undocumentedKeywords(d.schema)).toEqual(["maxLength", "minLength"]);
+  });
+});
+
+type Loose = { [key: string]: Loose } & Record<string, unknown>;
+
+describe("F/G schemas", () => {
+  const bareKeywords = (schema: unknown) => collectSchemaKeywords(schema);
+
+  it("F adds only description and G adds only minItems/maxItems to C", () => {
+    const cases = createMatrixCases();
+    const [c, f, g] = [cases[2], cases[5], cases[6]];
+    expect(f.name).toBe("F_essential_schema_with_descriptions");
+    expect(g.name).toBe("G_essential_schema_with_array_bounds");
+    expect(f.simplePrompt).toBe(c.simplePrompt);
+    expect(g.simplePrompt).toBe(c.simplePrompt);
+    const base = bareKeywords(c.schema);
+    expect(bareKeywords(f.schema)).toEqual([...base, "description"].sort());
+    expect(bareKeywords(g.schema)).toEqual([...base, "maxItems", "minItems"].sort());
+    expect(bareKeywords(f.schema)).not.toContain("minLength");
+    expect(bareKeywords(g.schema)).not.toContain("maxLength");
+  });
+
+  it("adds values at matching nested paths without mutating sources", () => {
+    const snapshotFull = structuredClone(investigationResponseJsonSchema);
+    const snapshotC = structuredClone(ESSENTIAL_INVESTIGATION_SCHEMA);
+    const [, , , , , f, g] = createMatrixCases();
+    const full = investigationResponseJsonSchema as unknown as Loose;
+    const fs = f.schema as Loose;
+    const gs = g.schema as Loose;
+    expect(fs.properties.summary.description).toBe(full.properties.summary.description);
+    expect(fs.properties.hypotheses.items.properties.title).not.toHaveProperty("minLength");
+    expect(gs.properties.hypotheses.minItems).toBe(full.properties.hypotheses.minItems);
+    expect(gs.properties.hypotheses.maxItems).toBe(full.properties.hypotheses.maxItems);
+    expect(gs.properties.observedFacts.items.properties.eventIds.maxItems).toBe(
+      full.properties.observedFacts.items.properties.eventIds.maxItems,
+    );
+    expect(gs.properties.summary).not.toHaveProperty("description");
+    expect(investigationResponseJsonSchema).toEqual(snapshotFull);
+    expect(ESSENTIAL_INVESTIGATION_SCHEMA).toEqual(snapshotC);
+  });
+
+  it("does not mutate inputs or add keywords at missing paths", () => {
+    const base = { type: "object", properties: { a: { type: "array", items: { type: "string" } } } };
+    const source = { description: "root", properties: { a: { minItems: 1, items: { description: "i" } }, b: { description: "x" } } };
+    const b = structuredClone(base);
+    const s = structuredClone(source);
+    const out = addKeywordsFromSource(base, source, ["description", "minItems"]);
+    expect(base).toEqual(b);
+    expect(source).toEqual(s);
+    expect(out).toEqual({
+      type: "object",
+      description: "root",
+      properties: { a: { type: "array", minItems: 1, items: { type: "string", description: "i" } } },
+    });
+    expect(out.properties.a).not.toBe(base.properties.a);
   });
 });
 

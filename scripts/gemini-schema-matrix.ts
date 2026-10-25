@@ -76,6 +76,36 @@ export function removeStringLengthBounds<T>(node: T, isPropertyMap = false): T {
   return out as T;
 }
 
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+/**
+ * Deep copy of `base` plus only the listed keywords taken from the node at the same schema path in `source`
+ * (through `properties` and `items`). Neither input is modified; keywords are never added to missing paths.
+ */
+export function addKeywordsFromSource<T>(base: T, source: unknown, keywords: readonly string[]): T {
+  if (!isPlainObject(base)) return structuredClone(base);
+  const src = isPlainObject(source) ? source : {};
+  const out: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(base)) {
+    if (key === "properties" && isPlainObject(value)) {
+      const srcProps = isPlainObject(src.properties) ? src.properties : {};
+      out.properties = Object.fromEntries(
+        Object.entries(value).map(([name, child]) => [name, addKeywordsFromSource(child, srcProps[name], keywords)]),
+      );
+    } else if (key === "items") {
+      out.items = addKeywordsFromSource(value, src.items, keywords);
+    } else {
+      out[key] = structuredClone(value);
+    }
+  }
+  for (const keyword of keywords) {
+    if (keyword in src && !(keyword in out)) out[keyword] = structuredClone(src[keyword]);
+  }
+  return out as T;
+}
+
 export function createMatrixCases(): MatrixCase[] {
   return [
     { name: "A_simple_json_no_schema", schema: undefined, simplePrompt: true },
@@ -85,6 +115,16 @@ export function createMatrixCases(): MatrixCase[] {
     {
       name: "E_full_schema_without_string_length_bounds",
       schema: removeStringLengthBounds(investigationResponseJsonSchema),
+      simplePrompt: false,
+    },
+    {
+      name: "F_essential_schema_with_descriptions",
+      schema: addKeywordsFromSource(ESSENTIAL_INVESTIGATION_SCHEMA, investigationResponseJsonSchema, ["description"]),
+      simplePrompt: false,
+    },
+    {
+      name: "G_essential_schema_with_array_bounds",
+      schema: addKeywordsFromSource(ESSENTIAL_INVESTIGATION_SCHEMA, investigationResponseJsonSchema, ["minItems", "maxItems"]),
       simplePrompt: false,
     },
   ];
