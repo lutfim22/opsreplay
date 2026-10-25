@@ -18,3 +18,14 @@ Next.js (App Router), TypeScript (strict), Tailwind CSS, shadcn/ui, pnpm.
 
 ## Before committing
 Run `pnpm lint`, `pnpm typecheck` and `pnpm build`.
+
+## AI commit attribution
+- Every AI-authored code commit must end with a valid Git `Co-authored-by:` trailer
+  identifying the actual agent under a verified identity or owner-approved convention.
+- For Codex and ChatGPT contributions, the owner-approved convention is
+  `Co-authored-by: Codex <codex@openai.com>`. This address is an owner-selected
+  convention, not a verified official OpenAI identity.
+- Do not apply this convention to contributions from other agents without the
+  owner's approval. Never infer an agent's identity from a model display name.
+- Report agent, model and reasoning effort when known; say when unavailable.
+  Do not rewrite pushed history solely to add attribution.
