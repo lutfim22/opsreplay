@@ -1,9 +1,12 @@
 import { pathToFileURL } from "node:url";
 import { ApiError, GoogleGenAI, ThinkingLevel } from "@google/genai";
 import { getSimulatedEvents } from "@/lib/timeline";
-import { readConfig } from "@/lib/investigation/config";
-import { buildUserPrompt, SYSTEM_INSTRUCTION } from "@/lib/investigation/prompt";
-import { investigationResponseJsonSchema, investigationResultSchema } from "@/lib/investigation/schema";
+import {
+  buildUserPrompt,
+  investigationResponseJsonSchema,
+  investigationResultSchema,
+  SYSTEM_INSTRUCTION,
+} from "@/scripts/gemini-diagnostics-contract";
 import type { OpsEvent } from "@/lib/events";
 
 interface Probe {
@@ -137,8 +140,24 @@ export async function runProbe(ai: GoogleGenAI, probe: Probe, model: string, tim
   }
 }
 
+export const DEFAULT_DIAGNOSTIC_MODEL = "gemini-3.8-flash";
+export const DEFAULT_DIAGNOSTIC_TIMEOUT_MS = 45_000;
+const MAX_DIAGNOSTIC_TIMEOUT_MS = 55_000;
+const MODEL_PATTERN = /^gemini-[a-z0-9][a-z0-9.-]{0,63}$/;
+
+export function readDiagnosticConfig(env: Record<string, string | undefined> = process.env) {
+  const model = env.GEMINI_MODEL?.trim() || DEFAULT_DIAGNOSTIC_MODEL;
+  if (!MODEL_PATTERN.test(model)) throw new Error("GEMINI_MODEL is not a valid gemini-* model id.");
+  const raw = env.GEMINI_TIMEOUT_MS?.trim();
+  const timeoutMs = raw === undefined || raw === "" ? DEFAULT_DIAGNOSTIC_TIMEOUT_MS : Number(raw);
+  if (!Number.isInteger(timeoutMs) || timeoutMs < 1000 || timeoutMs > MAX_DIAGNOSTIC_TIMEOUT_MS) {
+    throw new Error("GEMINI_TIMEOUT_MS must be between 1000 and 55000.");
+  }
+  return { apiKey: env.GEMINI_API_KEY?.trim() || undefined, model, timeoutMs };
+}
+
 export async function runGeminiDiagnostics(): Promise<void> {
-  const config = readConfig();
+  const config = readDiagnosticConfig();
   if (!config.apiKey) {
     console.error("GEMINI_API_KEY is not set; no Gemini requests were sent.");
     process.exitCode = 1;

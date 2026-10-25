@@ -3,6 +3,15 @@ name: Gemini diagnostics
 on:
   workflow_dispatch:
     inputs:
+      mode:
+        description: list_models (discover available models), run_probes, or schema_matrix (A-D schema comparison)
+        required: false
+        type: choice
+        default: list_models
+        options:
+          - list_models
+          - run_probes
+          - schema_matrix
       model:
         description: Gemini model id
         required: false
@@ -37,6 +46,7 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - name: Validate diagnostic inputs
+        if: inputs.mode == 'run_probes' || inputs.mode == 'schema_matrix'
         id: inputs
         env:
           MODEL: ${{ inputs.model }}
@@ -52,9 +62,22 @@ jobs:
           fi
           echo "model=$MODEL" >> "$GITHUB_OUTPUT"
           echo "timeout_ms=$((TIMEOUT_SECONDS * 1000))" >> "$GITHUB_OUTPUT"
+      - name: List Gemini models
+        if: inputs.mode == 'list_models'
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: pnpm diagnose:gemini:models
       - name: Run Gemini probes
+        if: inputs.mode == 'run_probes'
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           GEMINI_MODEL: ${{ steps.inputs.outputs.model }}
           GEMINI_TIMEOUT_MS: ${{ steps.inputs.outputs.timeout_ms }}
         run: pnpm diagnose:gemini
+      - name: Run Gemini schema matrix
+        if: inputs.mode == 'schema_matrix'
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GEMINI_MODEL: ${{ steps.inputs.outputs.model }}
+          GEMINI_TIMEOUT_MS: ${{ steps.inputs.outputs.timeout_ms }}
+        run: pnpm diagnose:gemini:schema-matrix

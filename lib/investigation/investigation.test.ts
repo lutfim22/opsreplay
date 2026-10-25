@@ -117,7 +117,7 @@ describe("local Gemini diagnostic error classification", () => {
 
     expect(generateContent).toHaveBeenCalledTimes(3);
     expect(generateContent.mock.calls[0]?.[0].config.responseJsonSchema).toBeUndefined();
-    expect(generateContent.mock.calls[1]?.[0].config.responseJsonSchema).toBe(investigationResponseJsonSchema);
+    expect(generateContent.mock.calls[1]?.[0].config.responseJsonSchema).toEqual(investigationResponseJsonSchema);
     expect(generateContent.mock.calls[2]?.[0].config.systemInstruction).toBe(SYSTEM_INSTRUCTION);
     for (const [call] of generateContent.mock.calls) {
       expect(call.model).toBe("gemini-3.8-flash");

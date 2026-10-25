@@ -65,7 +65,7 @@ for demonstration only and does not mean the simulated events happened at that t
 - If GitHub is empty, rate-limited or unavailable, a warning is shown with simulated events only; GitHub events are never fabricated.
 - Only the latest 30 commits, PRs and workflow runs are loaded; GitHub timestamps are commit date, PR `updated_at` and workflow run `updated_at`.
 - Temporal proximity (including aligned time) is not evidence of causation; no correlation is performed.
-- IoT data is simulated only; no real hardware, database or authentication. AI analysis is opt-in (see below).
+- IoT data is simulated only; no real hardware, database, authentication or AI analysis.
 
 ## AI investigation (Gemini, read-only)
 **Investigate with AI** on `/timeline` sends the events currently shown (after filters) to
@@ -99,57 +99,38 @@ checks and limitations. It never runs commands and never changes repositories or
 - Without a key the UI shows a "not set up" state and the endpoint returns `503`. CI and `pnpm test` use mocked
   Gemini responses and need no key.
 
-### Local Gemini diagnostics
-For operators diagnosing upstream latency, run `pnpm diagnose:gemini` in a trusted local shell after making
-`GEMINI_API_KEY` available through a secret manager or the shell environment. It reads the same `GEMINI_MODEL`
-and `GEMINI_TIMEOUT_MS` settings, makes three sequential direct SDK requests, and reports only probe name, model,
-duration, HTTP status/category, prompt byte count and event count. It never prints the key, prompt, event IDs, payload
-or model response. It does not add an API route and does not use the production endpoint.
+## Gemini diagnostics (manual, no API endpoint)
 
-The probes compare simple JSON without the response schema, simple JSON with the investigation schema, and the real
-investigation system/user prompt with three simulator events. An `upstream_http_504` is a Google HTTP response;
-`client_deadline_abort` means the local timeout elapsed without an HTTP status. If probe A fails, investigate model,
-account, region/network or upstream availability; if A succeeds but B fails, investigate schema compatibility; if B
-succeeds but C fails, investigate full prompt/context size or model workload. These comparisons narrow the cause but
-do not prove a provider-side root cause.
+A manual GitHub Actions workflow runs three live Gemini probes so API problems (for example HTTP 504s) can be diagnosed without a local machine. It is `workflow_dispatch` only, runs on `main`, has read-only permissions and exposes no public endpoint. CI never calls Gemini.
 
-#### Run from GitHub Actions (mobile-friendly)
-1. In the repository, open **Settings → Secrets and variables → Actions → New repository secret**.
-   Add `GEMINI_API_KEY`; do not put the key in workflow inputs or logs.
-2. Open **Actions → Gemini diagnostics → Run workflow**. GitHub only offers manual dispatch for workflows
-   present on the repository's default branch, so this workflow must first reach `main`.
-3. Keep the branch set to `main`, optionally enter a `gemini-*` model id and a timeout from 1 to 55 seconds,
-   then tap **Run workflow**. The default model is `gemini-3.8-flash` and the default per-probe timeout is 45 seconds.
-4. Open the workflow run and inspect the three sanitized JSON result lines. Each probe can take up to the selected
-   timeout; the job is limited to five minutes. Runs are serialized to prevent concurrent Gemini calls.
+**Set up the secret (smartphone, GitHub app or mobile web):** repository *Settings → Secrets and variables → Actions → New repository secret*, name `GEMINI_API_KEY`.
 
-The workflow checks out `main` and only runs on `main`; dispatches targeting other branches are skipped. This avoids
-passing the repository secret to pull-request branch code. If no repository secret is configured, the diagnostic
-script exits without sending requests.
+**Discover available models first (default mode):** *Actions → Gemini diagnostics → Run workflow*, branch `main`, leave `mode` = `list_models`. It runs `pnpm diagnose:gemini:models` only (all pages of the SDK `models.list`). The log prints one JSON line per model (`id`, `displayName`, `supportedActions`, `generateContent`: `yes` / `no` / `unknown` when the API gave no capability data) and a final `summary` line with counts and `generateContentIds`. Pick an id with `generateContent: yes` and pass it as `model` in `run_probes` mode. On failure the summary shows `outcome: failure`, `httpStatus` and `category` (`upstream_http_<status>`, e.g. 403 = key problem, or `client_error`); raw errors and the key are never printed.
 
-### Cost, quota and abuse considerations
-- Requests accept at most 200 events and a 512 KiB body; the serialized model prompt is capped at 256 KiB.
-  Transient HTTP 503/504 failures receive up to two retries with exponential backoff and jitter inside the
-  configured total deadline. The SDK's own retries are disabled so they cannot extend that deadline.
-- For Gemini 3 model IDs, the request uses the SDK-supported `thinkingLevel: "low"` option and leaves temperature
-  at the model default; Gemini 2.x retains its supported `temperature: 0.2` setting. Evidence instructions,
-  original timestamps, IDs and strict response validation are unchanged.
-- The free tier has low rate limits and quota errors are shown as such (HTTP 429); paid usage is billed per token
-  by Google.
-- Events are sent to Google Gemini. Do not use it with data you are not allowed to share with that service.
-- The endpoint has no authentication. Protections: bounded body/event count, same-origin check, per-IP in-memory
-  rate limiting and a request timeout. Remaining risks: the limiter is per serverless instance (best effort) and trusts
-  `x-forwarded-for`, so a determined caller can exceed it or spend your quota; add authentication, a shared store
-  (e.g. Vercel KV/Upstash) or a WAF rule and a Google Cloud budget/quota cap before exposing it widely.
-- The server cannot verify that submitted events are authentic (there is no database); it only guarantees the analysis
-  refers to the events it was given.
+**Run probes:** set `mode` = `run_probes`. *Actions → Gemini diagnostics → Run workflow*, branch `main`. Inputs: `model` (default `gemini-3.8-flash`, must match `gemini-*`) and `timeout_seconds` (default `45`, 1–55, per probe).
 
-### Limitations
-- Hypotheses are not confirmed root causes; simulated telemetry is not real hardware evidence; temporal proximity,
-  including aligned time, is not causation.
-- LLM output can still misread or over-interpret valid events. Id checks prove traceability, not correctness; verify
-  against the linked records.
-- Long text values are truncated (500 chars) and deep payloads are trimmed before analysis; results are not stored.
-- Retries can reduce transient 503/504 failures but cannot resolve persistent Google service or model availability
-  problems. Mocked tests and local checks cannot verify the configured model's live structured-output support or
-  preview-service availability; confirm those with a real Preview deployment and request.
+**Read the results:** the log prints one JSON line per probe with `probe`, `model`, `durationMs`, `httpStatus`, `category`, `outcome`, `promptBytes`, `eventCount`. Prompts, event ids and model output are never printed.
+
+| Probe | What it tests |
+| --- | --- |
+| `simple_json_without_schema` | Basic connectivity, key and model with a trivial JSON reply |
+| `simple_json_with_investigation_schema` | Same, plus the investigation response schema |
+| `three_simulated_events_full_investigation` | Full investigation system prompt with three simulator events (power spike, offline, online) and the schema |
+
+`category` values: `success`; `invalid_json_response` / `schema_validation_failed` (reply received but unusable); `upstream_http_<status>` (Gemini returned an HTTP error, e.g. `upstream_http_504`, `403` for key problems); `client_deadline_abort` (our timeout fired first); `client_error` (other). If probe 1 passes and 3 fails, the prompt/schema size or latency is the likely cause; if all fail, check the key, model and quota.
+
+**Schema matrix (HTTP 400 on structured output):** set `mode` = `schema_matrix` (same `model` / `timeout_seconds` inputs, per case). From a phone: GitHub app → repository → *Actions* → *Gemini diagnostics* → *Run workflow* → branch `main`, choose `schema_matrix`, enter the model (for example `gemini-3.5-flash`), run, then open the run and expand the *Run Gemini schema matrix* step. It runs `pnpm diagnose:gemini:schema-matrix` (separate from the three probes above) with identical model and generation settings:
+
+| Case | Schema | Prompt |
+| --- | --- | --- |
+| `A_simple_json_no_schema` | none (control) | trivial |
+| `B_minimal_schema_one_string` | one required string property | trivial |
+| `C_essential_investigation_schema` | investigation structure and required fields, no length/count bounds or descriptions | full investigation |
+| `D_full_investigation_schema` | existing `investigationResponseJsonSchema` | full investigation |
+| `E_full_schema_without_string_length_bounds` | D without `minLength`/`maxLength` | full investigation |
+| `F_essential_schema_with_descriptions` | C plus only `description` fields from D at matching paths | full investigation |
+| `G_essential_schema_with_array_bounds` | C plus only `minItems`/`maxItems` from D at matching paths | full investigation |
+
+Each line reports `httpStatus`, `category`, `schemaKeywords` and `undocumentedKeywords` (keywords the installed `@google/genai` `responseJsonSchema` docs do not list as supported; currently `minLength` and `maxLength`, used only by D). For HTTP 400 it adds `errorDetails` from a strict allowlist: the Google error `status` enum, `reason` enums, `fieldViolations` field paths and which schema keyword names the message mentions. Raw errors, messages, headers, prompts, model output and the key are never printed. Reading it: if A passes, B passes, C passes and D fails, the extra constraints in D (`minLength`/`maxLength` are the prime suspects, then `description` text and the `minItems`/`maxItems` bounds) are plausible causes; if B or C fail too, the structure (nested arrays of objects, `enum`) or `responseJsonSchema` itself for that model is implicated. These are hypotheses until a live run confirms them. Reading F/G (both start from passing C, no `minLength`/`maxLength`): F fails → `description` triggers the 400; G fails → `minItems`/`maxItems` trigger it; both fail → either alone is enough; both pass → neither keyword alone is the cause (look at combinations or the sizes/interaction in D/E).
+
+**Relation to the production investigation request (PR #7):** the schema (`investigationResponseJsonSchema`), system instruction and user prompt are verbatim copies in `scripts/gemini-diagnostics-contract.ts`, so they must be kept in sync until the feature lands. Differences: the diagnostics default to `gemini-3.8-flash` while PR #7's app default is `gemini-2.5-flash` (the model is never changed silently; pass `model` to match); events come from the simulator rather than user selection, with Demo Time Alignment off; there is no request validation, rate limiting or evidence-id check; one attempt only (no retries); the timeout is configurable up to 55 s versus 25 s in the app; and output is only validated against the result schema.
