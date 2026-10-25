@@ -4,6 +4,7 @@ import {
   collectSchemaKeywords,
   createMatrixCases,
   extractSafeApiErrorDetails,
+  removeStringLengthBounds,
   runMatrixCase,
   undocumentedKeywords,
 } from "@/scripts/gemini-schema-matrix";
@@ -29,9 +30,11 @@ function logged(spy: { mock: { calls: unknown[][] } }) {
 }
 
 describe("schema matrix cases", () => {
-  it("defines A-D with the full schema last and no schema for the control", () => {
+  it("defines A-E with no schema for the control and the full schema at D", () => {
     const cases = createMatrixCases();
-    expect(cases.map((c) => c.name.charAt(0))).toEqual(["A", "B", "C", "D"]);
+    expect(cases.map((c) => c.name.charAt(0))).toEqual(["A", "B", "C", "D", "E"]);
+    expect(cases[4].name).toBe("E_full_schema_without_string_length_bounds");
+    expect(cases[4].simplePrompt).toBe(cases[3].simplePrompt);
     expect(cases[0].schema).toBeUndefined();
     expect(cases[3].schema).toBe(investigationResponseJsonSchema);
   });
@@ -41,6 +44,41 @@ describe("schema matrix cases", () => {
     expect(undocumentedKeywords(c.schema)).toEqual([]);
     expect(collectSchemaKeywords(d.schema)).toEqual(expect.arrayContaining(["minLength", "maxLength", "maxItems", "minItems", "description"]));
     expect(undocumentedKeywords(d.schema)).toEqual(["maxLength", "minLength"]);
+  });
+});
+
+describe("removeStringLengthBounds", () => {
+  it("recursively removes only minLength/maxLength without mutating the input", () => {
+    const input = {
+      type: "object",
+      properties: {
+        minLength: { type: "string", minLength: 1, maxLength: 5, description: "d" },
+        list: { type: "array", minItems: 1, maxItems: 2, items: { type: "string", maxLength: 3, enum: ["a"] } },
+      },
+      required: ["list"],
+    };
+    const snapshot = structuredClone(input);
+    const out = removeStringLengthBounds(input);
+    expect(input).toEqual(snapshot);
+    expect(out).toEqual({
+      type: "object",
+      properties: {
+        minLength: { type: "string", description: "d" },
+        list: { type: "array", minItems: 1, maxItems: 2, items: { type: "string", enum: ["a"] } },
+      },
+      required: ["list"],
+    });
+  });
+
+  it("derives E from the full schema leaving D unchanged", () => {
+    const snapshot = structuredClone(investigationResponseJsonSchema);
+    const [, , , d, e] = createMatrixCases();
+    expect(investigationResponseJsonSchema).toEqual(snapshot);
+    expect(collectSchemaKeywords(d.schema)).toEqual(expect.arrayContaining(["minLength", "maxLength"]));
+    expect(collectSchemaKeywords(e.schema)).toEqual(
+      collectSchemaKeywords(d.schema).filter((k) => k !== "minLength" && k !== "maxLength"),
+    );
+    expect(undocumentedKeywords(e.schema)).toEqual([]);
   });
 });
 
