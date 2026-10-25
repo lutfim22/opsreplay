@@ -114,6 +114,22 @@ describe("result schema", () => {
     expect([...investigationResponseJsonSchema.required].sort()).toEqual(Object.keys(validResult()).sort());
   });
 
+  it("describes the validator's result bounds in the Gemini JSON schema", () => {
+    const { properties } = investigationResponseJsonSchema;
+    expect(properties.observedFacts.maxItems).toBe(30);
+    expect(properties.observedFacts.items.properties.eventIds).toMatchObject({
+      minItems: 1,
+      maxItems: 30,
+      items: { minLength: 1, maxLength: 300 },
+    });
+    expect(properties.hypotheses.maxItems).toBe(8);
+    expect(properties.hypotheses.items.properties.supportingEventIds).toMatchObject({
+      minItems: 1,
+      maxItems: 30,
+      items: { minLength: 1, maxLength: 300 },
+    });
+  });
+
   it("rejects unknown confidence levels and hypotheses without evidence", () => {
     const badConfidence = validResult();
     (badConfidence.hypotheses[0] as { confidence: string }).confidence = "certain";

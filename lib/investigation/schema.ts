@@ -49,36 +49,70 @@ export type InvestigationResult = z.infer<typeof investigationResultSchema>;
 export const investigationResponseJsonSchema = {
   type: "object",
   properties: {
-    summary: { type: "string", description: "2-4 sentences restating only what the observed facts show. No unverified claims." },
+    summary: {
+      type: "string",
+      minLength: 1,
+      maxLength: 2000,
+      description: "2-4 sentences restating only what the observed facts show. No unverified claims.",
+    },
     observedFacts: {
       type: "array",
-      description: "Facts read directly from the submitted events. Each must cite the event ids it comes from.",
+      maxItems: 30,
+      description: "At most 30 facts read directly from the submitted events. Each statement is 1-600 characters and cites 1-30 exact submitted event ids (each 1-300 characters).",
       items: {
         type: "object",
         properties: {
-          statement: { type: "string" },
-          eventIds: { type: "array", items: { type: "string" }, description: "Exact ids of submitted events." },
+          statement: { type: "string", minLength: 1, maxLength: 600 },
+          eventIds: {
+            type: "array",
+            minItems: 1,
+            maxItems: 30,
+            items: { type: "string", minLength: 1, maxLength: 300 },
+            description: "1-30 exact ids of submitted events.",
+          },
         },
         required: ["statement", "eventIds"],
       },
     },
     hypotheses: {
       type: "array",
-      description: "Possible explanations. They are not confirmed root causes.",
+      maxItems: 8,
+      description: "At most 8 possible explanations; they are not confirmed root causes. Titles are 1-200 characters, reasoning is 1-1500 characters, and each hypothesis cites 1-30 exact submitted event ids (each 1-300 characters). Include at most 10 missing-evidence items, each 1-400 characters.",
       items: {
         type: "object",
         properties: {
-          title: { type: "string" },
+          title: { type: "string", minLength: 1, maxLength: 200 },
           confidence: { type: "string", enum: ["low", "medium", "high"] },
-          supportingEventIds: { type: "array", items: { type: "string" }, description: "Exact ids of submitted events." },
-          reasoning: { type: "string" },
-          missingEvidence: { type: "array", items: { type: "string" }, description: "What would be needed to confirm or reject this." },
+          supportingEventIds: {
+            type: "array",
+            minItems: 1,
+            maxItems: 30,
+            items: { type: "string", minLength: 1, maxLength: 300 },
+            description: "1-30 exact ids of submitted events.",
+          },
+          reasoning: { type: "string", minLength: 1, maxLength: 1500 },
+          missingEvidence: {
+            type: "array",
+            maxItems: 10,
+            items: { type: "string", minLength: 1, maxLength: 400 },
+            description: "At most 10 items describing what would be needed to confirm or reject this.",
+          },
         },
         required: ["title", "confidence", "supportingEventIds", "reasoning", "missingEvidence"],
       },
     },
-    recommendedNextChecks: { type: "array", items: { type: "string" }, description: "Read-only checks a human could perform." },
-    limitations: { type: "array", items: { type: "string" } },
+    recommendedNextChecks: {
+      type: "array",
+      maxItems: 10,
+      items: { type: "string", minLength: 1, maxLength: 400 },
+      description: "At most 10 read-only checks a human could perform, each 1-400 characters.",
+    },
+    limitations: {
+      type: "array",
+      maxItems: 10,
+      items: { type: "string", minLength: 1, maxLength: 400 },
+      description: "At most 10 limitations, each 1-400 characters.",
+    },
   },
   required: ["summary", "observedFacts", "hypotheses", "recommendedNextChecks", "limitations"],
 } as const;

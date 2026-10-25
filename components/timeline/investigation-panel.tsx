@@ -183,6 +183,7 @@ export function InvestigationPanel({ events, demoAlignment }: { events: readonly
   const disabled = pending || events.length === 0 || tooMany;
 
   async function start() {
+    if (disabled) return;
     controller.current?.abort();
     const next = new AbortController();
     controller.current = next;
@@ -197,7 +198,10 @@ export function InvestigationPanel({ events, demoAlignment }: { events: readonly
     setPending(false);
   }
 
-  const stale = run?.outcome.status === "ready" && run.outcome.eventIds.join("\n") !== events.map((e) => e.id).join("\n");
+  const stale =
+    run?.outcome.status === "ready" &&
+    JSON.stringify([...run.submitted].sort((a, b) => a.id.localeCompare(b.id))) !==
+      JSON.stringify([...events].sort((a, b) => a.id.localeCompare(b.id)));
 
   return (
     <Card>
