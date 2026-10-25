@@ -99,6 +99,20 @@ checks and limitations. It never runs commands and never changes repositories or
 - Without a key the UI shows a "not set up" state and the endpoint returns `503`. CI and `pnpm test` use mocked
   Gemini responses and need no key.
 
+### Local Gemini diagnostics
+For operators diagnosing upstream latency, run `pnpm diagnose:gemini` in a trusted local shell after making
+`GEMINI_API_KEY` available through a secret manager or the shell environment. It reads the same `GEMINI_MODEL`
+and `GEMINI_TIMEOUT_MS` settings, makes three sequential direct SDK requests, and reports only probe name, model,
+duration, HTTP status/category, prompt byte count and event count. It never prints the key, prompt, event IDs, payload
+or model response. It does not add an API route and does not use the production endpoint.
+
+The probes compare simple JSON without the response schema, simple JSON with the investigation schema, and the real
+investigation system/user prompt with three simulator events. An `upstream_http_504` is a Google HTTP response;
+`client_deadline_abort` means the local timeout elapsed without an HTTP status. If probe A fails, investigate model,
+account, region/network or upstream availability; if A succeeds but B fails, investigate schema compatibility; if B
+succeeds but C fails, investigate full prompt/context size or model workload. These comparisons narrow the cause but
+do not prove a provider-side root cause.
+
 ### Cost, quota and abuse considerations
 - Requests accept at most 200 events and a 512 KiB body; the serialized model prompt is capped at 256 KiB.
   Transient HTTP 503/504 failures receive up to two retries with exponential backoff and jitter inside the

@@ -1,4 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { ApiError } from "@google/genai";
+import type { GoogleGenAI } from "@google/genai";
 import type { OpsEvent } from "@/lib/events";
 import { getSimulatedEvents } from "@/lib/timeline";
 import { readConfig, DEFAULT_GEMINI_MODEL } from "@/lib/investigation/config";
@@ -18,6 +20,7 @@ import {
   MAX_PROMPT_BYTES,
 } from "@/lib/investigation/schema";
 import type { InvestigationResult } from "@/lib/investigation/schema";
+import { classifyDiagnosticFailure, createProbes, runProbe } from "@/scripts/gemini-diagnostics";
 
 const gh = (id: string, extra: Partial<OpsEvent> = {}): OpsEvent => ({
   id,
@@ -65,6 +68,64 @@ function firstHypothesis(result: InvestigationResult): InvestigationResult["hypo
 
 const config = { model: "gemini-test", timeoutMs: 1000 };
 const generatorReturning = (value: unknown): Generator => vi.fn(async () => (typeof value === "string" ? value : JSON.stringify(value)));
+
+describe("local Gemini diagnostic error classification", () => {
+  it("distinguishes an upstream HTTP 504 from a client-side deadline abort", () => {
+    expect(classifyDiagnosticFailure(new ApiError({ message: "sensitive details", status: 504 }))).toEqual({
+      httpStatus: 504,
+      category: "upstream_http_504",
+    });
+    const abort = new Error("timeout");
+    abort.name = "AbortError";
+    expect(classifyDiagnosticFailure(abort)).toEqual({ httpStatus: null, category: "client_deadline_abort" });
+    expect(classifyDiagnosticFailure(new ApiError({ message: "sensitive details", status: 403 }))).toEqual({
+      httpStatus: 403,
+      category: "upstream_http_403",
+    });
+  });
+
+  it("builds the three intended probes and keeps IDs/timestamps only in the full prompt", async () => {
+    const probes = createProbes();
+    expect(probes.map((probe) => probe.name)).toEqual([
+      "simple_json_without_schema",
+      "simple_json_with_investigation_schema",
+      "three_simulated_events_full_investigation",
+    ]);
+    expect(probes[0]?.useSchema).toBe(false);
+    expect(probes[1]?.useSchema).toBe(true);
+    expect(probes[2]?.useSchema).toBe(true);
+    expect(probes[2]?.eventCount).toBe(3);
+    const allSimulated = getSimulatedEvents();
+    const expectedEvents = [
+      allSimulated.find((event) => event.type === "power.reading" && (event.metrics?.powerW ?? 0) >= 1500),
+      allSimulated.find((event) => event.type === "device.offline"),
+      allSimulated.find((event) => event.type === "device.online"),
+    ];
+    for (const event of expectedEvents) {
+      if (!event) throw new Error("simulator fixture is missing a diagnostic event");
+      expect(probes[2]?.prompt).toContain(event.id);
+      expect(probes[2]?.prompt).toContain(event.timestamp);
+    }
+    const powerSpike = expectedEvents[0];
+    if (!powerSpike) throw new Error("simulator fixture is missing the power spike");
+    expect(probes[0]?.prompt).not.toContain(powerSpike.id);
+
+    const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
+    const generateContent = vi.fn().mockResolvedValue({ text: JSON.stringify(validResult()) });
+    const client = { models: { generateContent } } as unknown as GoogleGenAI;
+    for (const probe of probes) await runProbe(client, probe, "gemini-3.8-flash", 1000);
+
+    expect(generateContent).toHaveBeenCalledTimes(3);
+    expect(generateContent.mock.calls[0]?.[0].config.responseJsonSchema).toBeUndefined();
+    expect(generateContent.mock.calls[1]?.[0].config.responseJsonSchema).toBe(investigationResponseJsonSchema);
+    expect(generateContent.mock.calls[2]?.[0].config.systemInstruction).toBe(SYSTEM_INSTRUCTION);
+    const results = log.mock.calls.map(([line]) => JSON.parse(String(line)) as Record<string, unknown>);
+    expect(results).toHaveLength(3);
+    expect(results.every((result) => result.category === "success")).toBe(true);
+    expect(JSON.stringify(results)).not.toContain(powerSpike.id);
+    expect(JSON.stringify(results)).not.toContain(powerSpike.timestamp);
+  });
+});
 
 function jsonRequest(body: unknown, headers: Record<string, string> = {}): Request {
   return new Request("http://localhost/api/investigate", {

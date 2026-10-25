@@ -3,3 +3,4 @@ allowBuilds:
   unrs-resolver: false
   "@google/genai": false
   protobufjs: false
+  esbuild: false
