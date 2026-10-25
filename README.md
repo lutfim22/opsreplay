@@ -69,6 +69,9 @@ for demonstration only and does not mean the simulated events happened at that t
 
 ## Gemini diagnostics (manual, no API endpoint)
 
+For the separately approved immutable PR7 verification workflow and its dispatch,
+environment and cost prerequisites, see [PR7 verification preparation](docs/PR7_VERIFICATION.md).
+
 A manual GitHub Actions workflow runs three live Gemini probes so API problems (for example HTTP 504s) can be diagnosed without a local machine. It is `workflow_dispatch` only, runs on `main`, has read-only permissions and exposes no public endpoint. CI never calls Gemini.
 
 **Set up the secret (smartphone, GitHub app or mobile web):** repository *Settings → Secrets and variables → Actions → New repository secret*, name `GEMINI_API_KEY`.

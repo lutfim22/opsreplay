@@ -122,8 +122,24 @@ describe("probe construction and execution (mocked)", () => {
     const generateContent = vi.fn().mockResolvedValue({ text: JSON.stringify({ summary: "" }) });
     const client = { models: { generateContent } } as unknown as GoogleGenAI;
     await runProbe(client, createProbes()[1]!, "gemini-3.8-flash", 1000);
+    expect(process.exitCode).toBe(1);
     process.exitCode = previous;
     expect(JSON.parse(String(log.mock.calls[0]?.[0]))).toMatchObject({ category: "schema_validation_failed" });
     expect(investigationResultSchema.safeParse({ summary: "" }).success).toBe(false);
+  });
+
+  it("fails invalid JSON without logging the response", async () => {
+    const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
+    const previous = process.exitCode;
+    try {
+      const generateContent = vi.fn().mockResolvedValue({ text: "PRIVATE_INVALID_JSON" });
+      await runProbe({ models: { generateContent } } as unknown as GoogleGenAI, createProbes()[0]!, "gemini-2.5-flash", 1000);
+      expect(process.exitCode).toBe(1);
+      expect(String(log.mock.calls[0]?.[0])).not.toContain("PRIVATE_INVALID_JSON");
+      expect(JSON.parse(String(log.mock.calls[0]?.[0]))).toMatchObject({ category: "invalid_json_response", outcome: "failure" });
+      expect(generateContent).toHaveBeenCalledTimes(1);
+    } finally {
+      process.exitCode = previous;
+    }
   });
 });

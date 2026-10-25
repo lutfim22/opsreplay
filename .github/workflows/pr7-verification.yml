@@ -1,0 +1,108 @@
+name: PR7 reviewed Gemini verification
+
+# Preparation only: this definition must be separately approved onto main before use.
+on:
+  workflow_dispatch:
+    inputs:
+      target_sha:
+        description: Approved full SHA (must equal the reviewed allowlist below)
+        required: true
+        type: string
+      model:
+        description: Confirmed deployment model
+        required: true
+        type: string
+      timeout_seconds:
+        description: Confirmed deployment timeout, seconds (1-55)
+        required: true
+        type: string
+      approval_issue:
+        description: Issue number containing explicit three-probe and cost authorization
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pr7-reviewed-gemini-verification
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    if: github.repository == 'lutfim22/opsreplay' && github.ref == 'refs/heads/main' && github.run_attempt == 1
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    # Must already exist with required reviewers, prevent-self-review, main-only
+    # deployment policy and an environment-only GEMINI_API_KEY. See docs.
+    environment: pr7-live-verification
+    env:
+      TARGET_SHA: ${{ inputs.target_sha }}
+      GEMINI_MODEL: ${{ inputs.model }}
+      TIMEOUT_SECONDS: ${{ inputs.timeout_seconds }}
+      APPROVAL_ISSUE: ${{ inputs.approval_issue }}
+      APPROVED_TARGET_SHA: ${{ vars.PR7_APPROVED_TARGET_SHA }}
+    steps:
+      - name: Validate authorization inputs before checkout
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Adding another target requires a separate source review and workflow change.
+          test "$TARGET_SHA" = ed7153260b6cf8a79b634191faf917b706fdb49f
+          test "$APPROVED_TARGET_SHA" = "$TARGET_SHA"
+          [[ "$GEMINI_MODEL" =~ ^gemini-[a-z0-9][a-z0-9.-]{0,63}$ ]]
+          [[ "$TIMEOUT_SECONDS" =~ ^[0-9]{1,2}$ ]]
+          (( 10#$TIMEOUT_SECONDS >= 1 && 10#$TIMEOUT_SECONDS <= 55 ))
+          [[ "$APPROVAL_ISSUE" =~ ^[1-9][0-9]{0,9}$ ]]
+          echo "GEMINI_TIMEOUT_MS=$((10#$TIMEOUT_SECONDS * 1000))" >> "$GITHUB_ENV"
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          path: control
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ed7153260b6cf8a79b634191faf917b706fdb49f
+          path: target
+          persist-credentials: false
+      - name: Verify target checkout
+        working-directory: target
+        run: test "$(git rev-parse HEAD)" = "$TARGET_SHA"
+      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6
+        with:
+          package_json_file: target/package.json
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+      - name: Install reviewed dependencies without provider secrets
+        working-directory: target
+        run: pnpm install --frozen-lockfile --ignore-scripts
+      - name: Run only the existing three probes, once
+        id: probes
+        working-directory: target
+        shell: bash
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: |
+          set -uo pipefail
+          test -n "$GEMINI_API_KEY" || exit 1
+          umask 077
+          # exec avoids package-manager banners; no discovery, matrix or retries.
+          set +e
+          pnpm exec tsx scripts/gemini-diagnostics.ts > "$RUNNER_TEMP/pr7-probes.jsonl" 2> "$RUNNER_TEMP/pr7-probes.stderr"
+          probe_exit=$?
+          set -e
+          echo "exit_code=$probe_exit" >> "$GITHUB_OUTPUT"
+      - name: Check all summaries and process status
+        working-directory: target
+        shell: bash
+        env:
+          PROBE_EXIT_CODE: ${{ steps.probes.outputs.exit_code }}
+        run: |
+          set -euo pipefail
+          pnpm exec tsx ../control/scripts/check-gemini-results.ts "$RUNNER_TEMP/pr7-probes.jsonl"
+          test "$PROBE_EXIT_CODE" = 0
+      - name: Remove captured output without uploading artifacts
+        if: always()
+        shell: bash
+        run: rm -f "$RUNNER_TEMP/pr7-probes.jsonl" "$RUNNER_TEMP/pr7-probes.stderr"
