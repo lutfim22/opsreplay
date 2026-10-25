@@ -11,6 +11,10 @@ const expectedActions = [
 const immutableAction = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+(?:\/[A-Za-z0-9_./-]+)?@[a-f0-9]{40}$/;
 
 function expectReviewedActions(workflow: string) {
+  if (/\{[^}\n]*\buses\s*:/m.test(workflow) || /(?:^|[\s,{])["']uses["']\s*:/m.test(workflow)) {
+    throw new Error("Unsupported YAML syntax for action references");
+  }
+
   const actions = [...workflow.matchAll(/^\s*(?:-\s*)?uses:\s+([^\s#]+)/gm)]
     .map((match) => match[1])
     .filter((action) => !action.startsWith("./"));
@@ -33,5 +37,23 @@ describe("PR7 verification workflow security", () => {
     );
 
     expect(() => expectReviewedActions(workflow)).toThrow("External action is not pinned to a full commit SHA");
+  });
+
+  it("rejects a job-level reusable workflow in an inline flow mapping", () => {
+    const workflow = readFileSync(workflowPath, "utf8").replace(
+      "jobs:\n",
+      "jobs:\n  unreviewed-reusable-workflow: { uses: 'example/action/.github/workflows/check.yml@v1' }\n",
+    );
+
+    expect(() => expectReviewedActions(workflow)).toThrow("Unsupported YAML syntax for action references");
+  });
+
+  it.each([
+    ["job", '  unreviewed-job:\n    "uses": example/action/.github/workflows/check.yml@v1\n'],
+    ["step", '  unreviewed-job:\n    steps:\n      - name: Unreviewed\n        "uses": example/action@v1\n'],
+  ])("rejects a quoted uses key in a %s", (_kind, job) => {
+    const workflow = readFileSync(workflowPath, "utf8").replace("jobs:\n", `jobs:\n${job}`);
+
+    expect(() => expectReviewedActions(workflow)).toThrow("Unsupported YAML syntax for action references");
   });
 });
