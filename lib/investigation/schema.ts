@@ -4,6 +4,7 @@ import { opsEventSchema } from "@/lib/events/schema";
 /** Hard limits that bound cost and abuse. Enforced on the server; the UI mirrors them. */
 export const MAX_EVENTS = 200;
 export const MAX_BODY_BYTES = 512 * 1024;
+export const MAX_PROMPT_BYTES = 256 * 1024;
 
 export const investigateRequestSchema = z
   .object({

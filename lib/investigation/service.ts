@@ -2,7 +2,7 @@ import { InvestigationError } from "@/lib/investigation/errors";
 import type { InvestigationConfig } from "@/lib/investigation/config";
 import { findEvidenceProblems } from "@/lib/investigation/evidence";
 import { buildUserPrompt, SYSTEM_INSTRUCTION } from "@/lib/investigation/prompt";
-import { investigationResponseJsonSchema, investigationResultSchema } from "@/lib/investigation/schema";
+import { investigationResponseJsonSchema, investigationResultSchema, MAX_PROMPT_BYTES } from "@/lib/investigation/schema";
 import type { InvestigateRequest, InvestigateSuccess } from "@/lib/investigation/schema";
 
 export interface GeneratorRequest {
@@ -10,6 +10,7 @@ export interface GeneratorRequest {
   systemInstruction: string;
   prompt: string;
   responseJsonSchema: typeof investigationResponseJsonSchema;
+  eventCount: number;
   timeoutMs: number;
 }
 
@@ -25,11 +26,17 @@ export async function investigate(
   generate: Generator,
   config: Pick<InvestigationConfig, "model" | "timeoutMs">,
 ): Promise<InvestigateSuccess> {
+  const prompt = buildUserPrompt(request.events, { demoAlignment: request.demoAlignment });
+  if (new TextEncoder().encode(prompt).byteLength > MAX_PROMPT_BYTES) {
+    throw new InvestigationError("payload_too_large");
+  }
+
   const text = await generate({
     model: config.model,
     systemInstruction: SYSTEM_INSTRUCTION,
-    prompt: buildUserPrompt(request.events, { demoAlignment: request.demoAlignment }),
+    prompt,
     responseJsonSchema: investigationResponseJsonSchema,
+    eventCount: request.events.length,
     timeoutMs: config.timeoutMs,
   });
 

@@ -82,14 +82,15 @@ checks and limitations. It never runs commands and never changes repositories or
   Alignment is only a display option and is never sent as evidence.
 - Event text (commit messages, titles, payloads) is untrusted: it is passed as escaped, size-bounded data inside a
   delimited block, and the instructions live only in the server-side system prompt (`lib/investigation/prompt.ts`).
-- Secrets, prompts and model configuration stay on the server; events and API keys are not logged.
+- Secrets, prompts and model configuration stay on the server. Diagnostics log only the HTTP status,
+  fixed error category, elapsed time, attempts, model id and event count—never keys or event content.
 
 ### Configuration
 | Variable | Required | Purpose |
 | --- | --- | --- |
 | `GEMINI_API_KEY` | yes | Server-only Gemini API key (create one in [Google AI Studio](https://aistudio.google.com/apikey)). |
 | `GEMINI_MODEL` | no | Model id, default `gemini-2.5-flash`. Must match `gemini-*`; must support structured JSON output. |
-| `GEMINI_TIMEOUT_MS` | no | Upstream timeout, default `25000` (max `55000`). |
+| `GEMINI_TIMEOUT_MS` | no | Total upstream deadline, default `25000` (max `55000`; the route allows 60 seconds). |
 | `INVESTIGATE_RATE_LIMIT_PER_MINUTE` | no | Per-IP limit, default `10`. |
 
 - **Local:** `cp .env.example .env.local`, set `GEMINI_API_KEY`, restart `pnpm dev`. `.env.local` is git-ignored.
@@ -99,8 +100,14 @@ checks and limitations. It never runs commands and never changes repositories or
   Gemini responses and need no key.
 
 ### Cost, quota and abuse considerations
-- Every click is one Gemini request with up to ~200 events of input; use the filters to analyze less. The free tier
-  has low rate limits and quota errors are shown as such (HTTP 429); paid usage is billed per token by Google.
+- Requests accept at most 200 events and a 512 KiB body; the serialized model prompt is capped at 256 KiB.
+  Transient HTTP 503/504 failures receive up to two retries with exponential backoff and jitter inside the
+  configured total deadline. The SDK's own retries are disabled so they cannot extend that deadline.
+- For Gemini 3 model IDs, the request uses the SDK-supported `thinkingLevel: "low"` option and leaves temperature
+  at the model default; Gemini 2.x retains its supported `temperature: 0.2` setting. Evidence instructions,
+  original timestamps, IDs and strict response validation are unchanged.
+- The free tier has low rate limits and quota errors are shown as such (HTTP 429); paid usage is billed per token
+  by Google.
 - Events are sent to Google Gemini. Do not use it with data you are not allowed to share with that service.
 - The endpoint has no authentication. Protections: bounded body/event count, same-origin check, per-IP in-memory
   rate limiting and a request timeout. Remaining risks: the limiter is per serverless instance (best effort) and trusts
@@ -115,3 +122,6 @@ checks and limitations. It never runs commands and never changes repositories or
 - LLM output can still misread or over-interpret valid events. Id checks prove traceability, not correctness; verify
   against the linked records.
 - Long text values are truncated (500 chars) and deep payloads are trimmed before analysis; results are not stored.
+- Retries can reduce transient 503/504 failures but cannot resolve persistent Google service or model availability
+  problems. Mocked tests and local checks cannot verify the configured model's live structured-output support or
+  preview-service availability; confirm those with a real Preview deployment and request.
