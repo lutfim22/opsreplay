@@ -62,12 +62,31 @@ export const ESSENTIAL_INVESTIGATION_SCHEMA = {
 
 export const SIMPLE_PROMPT = 'Return only a JSON object with one property: {"ok": "yes"}.';
 
+const STRING_LENGTH_KEYWORDS: ReadonlySet<string> = new Set(["minLength", "maxLength"]);
+
+/** Deep copy of a schema with only `minLength`/`maxLength` keywords removed; the input is not modified. */
+export function removeStringLengthBounds<T>(node: T, isPropertyMap = false): T {
+  if (Array.isArray(node)) return node.map((item) => removeStringLengthBounds(item)) as T;
+  if (typeof node !== "object" || node === null) return node;
+  const out: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(node)) {
+    if (!isPropertyMap && STRING_LENGTH_KEYWORDS.has(key)) continue;
+    out[key] = removeStringLengthBounds(value, !isPropertyMap && key === "properties");
+  }
+  return out as T;
+}
+
 export function createMatrixCases(): MatrixCase[] {
   return [
     { name: "A_simple_json_no_schema", schema: undefined, simplePrompt: true },
     { name: "B_minimal_schema_one_string", schema: MINIMAL_SCHEMA, simplePrompt: true },
     { name: "C_essential_investigation_schema", schema: ESSENTIAL_INVESTIGATION_SCHEMA, simplePrompt: false },
     { name: "D_full_investigation_schema", schema: investigationResponseJsonSchema, simplePrompt: false },
+    {
+      name: "E_full_schema_without_string_length_bounds",
+      schema: removeStringLengthBounds(investigationResponseJsonSchema),
+      simplePrompt: false,
+    },
   ];
 }
 
