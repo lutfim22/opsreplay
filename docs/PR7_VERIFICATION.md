@@ -83,12 +83,19 @@ public production quotas for exhaustion tests.
 
 ## Attribution convention
 
-Repository history uses Copilot-specific bot trailers and the owner's GitHub
+Repository history uses Copilot-specific bot identities and the owner's GitHub
 noreply identity; neither establishes an official Codex identity. The owner
-selected `Co-authored-by: Codex <codex@openai.com>` for Codex and ChatGPT
-contributions. The email is an owner-selected convention, not a verified
-official OpenAI identity. Record actual agent/model/reasoning in the report
-when known. Never rewrite `ed715326` or other pushed history.
+selected model-based attribution regardless of which agent hosts the model.
+OpenAI GPT/Codex models, including GPT-6 Luna, use
+`Co-authored-by: Codex <codex@openai.com>`. Anthropic Claude models use their
+exact model name, for example
+`Co-authored-by: Claude Sonnet 5.5 <noreply@anthropic.com>` or
+`Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>`. These addresses are
+owner-selected conventions, not verified official provider identities. A host
+such as Copilot may add its own attribution, but no additional agent-specific
+trailer is required here. Never guess an unavailable or ambiguous model. Record
+actual agent/model/reasoning in the report when known, and never rewrite
+`ed715326` or other pushed history solely to change attribution.
 
 ## Offline validation
 
