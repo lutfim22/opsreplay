@@ -7,6 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import type { OpsEvent } from "@/lib/events";
 import { INVESTIGATION_DISCLAIMERS, MAX_EVENTS, requestInvestigation } from "@/lib/investigation";
 import type { Confidence, InvestigationFailed, InvestigationReady } from "@/lib/investigation";
+import { captureInvestigationInput, isInvestigationStale } from "@/lib/investigation/stale";
 import { describeEvent, formatUtc } from "@/lib/timeline";
 import { cn } from "@/lib/utils";
 
@@ -21,6 +22,7 @@ const NON_RETRYABLE = new Set<InvestigationFailed["kind"]>(["invalid_input", "pa
 interface Run {
   /** Events as submitted; evidence chips resolve against these even if the filters change later. */
   submitted: OpsEvent[];
+  demoAlignment: boolean;
   outcome: InvestigationReady | InvestigationFailed;
 }
 
@@ -102,7 +104,7 @@ function Result({ run, ready, stale }: { run: Run; ready: InvestigationReady; st
     <div className="space-y-5">
       {stale && (
         <p role="status" className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-2 text-sm">
-          The timeline filters changed after this analysis. It only covers the {meta.eventCount} event(s) that were submitted.
+          The timeline inputs changed after this analysis. It only covers the {meta.eventCount} event(s) and Demo Time Alignment setting that were submitted.
         </p>
       )}
       <p className="text-xs text-muted-foreground">
@@ -187,11 +189,11 @@ export function InvestigationPanel({ events, demoAlignment }: { events: readonly
     controller.current?.abort();
     const next = new AbortController();
     controller.current = next;
-    const submitted = [...events];
+    const submittedInput = captureInvestigationInput(events, demoAlignment);
     setPending(true);
     try {
-      const outcome = await requestInvestigation(submitted, { demoAlignment, signal: next.signal });
-      setRun({ submitted, outcome });
+      const outcome = await requestInvestigation(submittedInput.events, { demoAlignment: submittedInput.demoAlignment, signal: next.signal });
+      setRun({ submitted: submittedInput.events, demoAlignment: submittedInput.demoAlignment, outcome });
     } catch {
       return; // aborted by a newer request or unmount
     }
@@ -200,8 +202,10 @@ export function InvestigationPanel({ events, demoAlignment }: { events: readonly
 
   const stale =
     run?.outcome.status === "ready" &&
-    JSON.stringify([...run.submitted].sort((a, b) => a.id.localeCompare(b.id))) !==
-      JSON.stringify([...events].sort((a, b) => a.id.localeCompare(b.id)));
+    isInvestigationStale(
+      { events: run.submitted, demoAlignment: run.demoAlignment },
+      { events, demoAlignment },
+    );
 
   return (
     <Card>
