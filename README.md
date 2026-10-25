@@ -73,7 +73,9 @@ A manual GitHub Actions workflow runs three live Gemini probes so API problems (
 
 **Set up the secret (smartphone, GitHub app or mobile web):** repository *Settings → Secrets and variables → Actions → New repository secret*, name `GEMINI_API_KEY`.
 
-**Run:** *Actions → Gemini diagnostics → Run workflow*, branch `main`. Inputs: `model` (default `gemini-3.8-flash`, must match `gemini-*`) and `timeout_seconds` (default `45`, 1–55, per probe).
+**Discover available models first (default mode):** *Actions → Gemini diagnostics → Run workflow*, branch `main`, leave `mode` = `list_models`. It runs `pnpm diagnose:gemini:models` only (all pages of the SDK `models.list`). The log prints one JSON line per model (`id`, `displayName`, `supportedActions`, `generateContent`: `yes` / `no` / `unknown` when the API gave no capability data) and a final `summary` line with counts and `generateContentIds`. Pick an id with `generateContent: yes` and pass it as `model` in `run_probes` mode. On failure the summary shows `outcome: failure`, `httpStatus` and `category` (`upstream_http_<status>`, e.g. 403 = key problem, or `client_error`); raw errors and the key are never printed.
+
+**Run probes:** set `mode` = `run_probes`. *Actions → Gemini diagnostics → Run workflow*, branch `main`. Inputs: `model` (default `gemini-3.8-flash`, must match `gemini-*`) and `timeout_seconds` (default `45`, 1–55, per probe).
 
 **Read the results:** the log prints one JSON line per probe with `probe`, `model`, `durationMs`, `httpStatus`, `category`, `outcome`, `promptBytes`, `eventCount`. Prompts, event ids and model output are never printed.
 

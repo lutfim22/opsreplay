@@ -9,7 +9,8 @@
     "lint": "eslint .",
     "test": "vitest run",
     "typecheck": "next typegen && tsc --noEmit",
-    "diagnose:gemini": "tsx scripts/gemini-diagnostics.ts"
+    "diagnose:gemini": "tsx scripts/gemini-diagnostics.ts",
+    "diagnose:gemini:models": "tsx scripts/gemini-models.ts"
   },
   "dependencies": {
     "@google/genai": "^2.31.0",
