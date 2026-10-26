@@ -118,6 +118,42 @@ export const investigationResponseJsonSchema = {
   required: ["summary", "observedFacts", "hypotheses", "recommendedNextChecks", "limitations"],
 } as const;
 
+/** Minimal Gemini-facing shape. Runtime limits and evidence checks stay application-side. */
+export const investigationProviderResponseJsonSchema = {
+  type: "object",
+  properties: {
+    summary: { type: "string" },
+    observedFacts: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: {
+          statement: { type: "string" },
+          eventIds: { type: "array", items: { type: "string" } },
+        },
+        required: ["statement", "eventIds"],
+      },
+    },
+    hypotheses: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: {
+          title: { type: "string" },
+          confidence: { type: "string", enum: ["low", "medium", "high"] },
+          supportingEventIds: { type: "array", items: { type: "string" } },
+          reasoning: { type: "string" },
+          missingEvidence: { type: "array", items: { type: "string" } },
+        },
+        required: ["title", "confidence", "supportingEventIds", "reasoning", "missingEvidence"],
+      },
+    },
+    recommendedNextChecks: { type: "array", items: { type: "string" } },
+    limitations: { type: "array", items: { type: "string" } },
+  },
+  required: ["summary", "observedFacts", "hypotheses", "recommendedNextChecks", "limitations"],
+} as const;
+
 export interface InvestigationMeta {
   model: string;
   eventCount: number;
