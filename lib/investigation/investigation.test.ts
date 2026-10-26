@@ -14,6 +14,7 @@ import { InvestigationError } from "@/lib/investigation/errors";
 import { parseInvestigateResponse } from "@/lib/investigation/client";
 import {
   investigateRequestSchema,
+  investigationProviderResponseJsonSchema,
   investigationResponseJsonSchema,
   investigationResultSchema,
   MAX_EVENTS,
@@ -183,23 +184,36 @@ describe("request validation", () => {
 describe("result schema", () => {
   it("accepts a conforming result and the JSON schema lists the same top-level keys", () => {
     expect(investigationResultSchema.safeParse(validResult()).success).toBe(true);
-    expect([...investigationResponseJsonSchema.required].sort()).toEqual(Object.keys(validResult()).sort());
+    expect([...investigationProviderResponseJsonSchema.required].sort()).toEqual(Object.keys(validResult()).sort());
   });
 
-  it("describes the validator's result bounds in the Gemini JSON schema", () => {
-    const { properties } = investigationResponseJsonSchema;
-    expect(properties.observedFacts.maxItems).toBe(30);
-    expect(properties.observedFacts.items.properties.eventIds).toMatchObject({
-      minItems: 1,
-      maxItems: 30,
-      items: { minLength: 1, maxLength: 300 },
+  it("keeps Gemini's schema minimal while the application validator retains its limits", () => {
+    expect(investigationProviderResponseJsonSchema).toEqual({
+      type: "object",
+      properties: {
+        summary: { type: "string" },
+        observedFacts: { type: "array", items: { type: "object", properties: {
+          statement: { type: "string" }, eventIds: { type: "array", items: { type: "string" } },
+        }, required: ["statement", "eventIds"] } },
+        hypotheses: { type: "array", items: { type: "object", properties: {
+          title: { type: "string" }, confidence: { type: "string", enum: ["low", "medium", "high"] },
+          supportingEventIds: { type: "array", items: { type: "string" } }, reasoning: { type: "string" },
+          missingEvidence: { type: "array", items: { type: "string" } },
+        }, required: ["title", "confidence", "supportingEventIds", "reasoning", "missingEvidence"] } },
+        recommendedNextChecks: { type: "array", items: { type: "string" } },
+        limitations: { type: "array", items: { type: "string" } },
+      },
+      required: ["summary", "observedFacts", "hypotheses", "recommendedNextChecks", "limitations"],
     });
-    expect(properties.hypotheses.maxItems).toBe(8);
-    expect(properties.hypotheses.items.properties.supportingEventIds).toMatchObject({
-      minItems: 1,
-      maxItems: 30,
-      items: { minLength: 1, maxLength: 300 },
-    });
+    expect(JSON.stringify(investigationProviderResponseJsonSchema)).not.toMatch(
+      /minLength|maxLength|minItems|maxItems|description/,
+    );
+    expect(investigationResponseJsonSchema.properties.observedFacts.maxItems).toBe(30);
+    expect(investigationResultSchema.safeParse({ ...validResult(), summary: "" }).success).toBe(false);
+    expect(investigationResultSchema.safeParse({
+      ...validResult(),
+      observedFacts: Array.from({ length: 31 }, () => validResult().observedFacts[0]!),
+    }).success).toBe(false);
   });
 
   it("rejects unknown confidence levels and hypotheses without evidence", () => {
@@ -221,7 +235,7 @@ describe("investigate (mocked Gemini)", () => {
     expect(out.meta).toMatchObject({ model: "gemini-test", eventCount: 2 });
     const request = (generate as ReturnType<typeof vi.fn>).mock.calls[0]?.[0] as GeneratorRequest;
     expect(request.systemInstruction).toBe(SYSTEM_INSTRUCTION);
-    expect(request.responseJsonSchema).toBe(investigationResponseJsonSchema);
+    expect(request.responseJsonSchema).toBe(investigationProviderResponseJsonSchema);
   });
 
   it("discards results that cite event ids that were not submitted", async () => {
@@ -249,6 +263,9 @@ describe("investigate (mocked Gemini)", () => {
   it("rejects malformed, non-JSON and schema-violating model output", async () => {
     await expect(investigate({ events: EVENTS }, generatorReturning("not json"), config)).rejects.toMatchObject({ kind: "invalid_model_output" });
     await expect(investigate({ events: EVENTS }, generatorReturning({ summary: "only" }), config)).rejects.toMatchObject({ kind: "invalid_model_output" });
+    await expect(investigate({
+      events: EVENTS,
+    }, generatorReturning({ ...validResult(), summary: "" }), config)).rejects.toMatchObject({ kind: "invalid_model_output" });
   });
 
   it.each(["timeout", "quota", "upstream"] as const)("propagates %s errors and fabricates nothing", async (kind) => {
@@ -292,7 +309,7 @@ describe("Gemini generator retry policy", () => {
         model,
         systemInstruction: SYSTEM_INSTRUCTION,
         prompt: "bounded test prompt",
-        responseJsonSchema: investigationResponseJsonSchema,
+        responseJsonSchema: investigationProviderResponseJsonSchema,
         eventCount: 3,
         timeoutMs: 1000,
       } satisfies GeneratorRequest,
@@ -542,6 +559,7 @@ describe("POST /api/investigate", () => {
     expect(await res.json()).toMatchObject({ ok: true, meta: { model: DEFAULT_GEMINI_MODEL, eventCount: 2 } });
     const call = generateContent.mock.calls[0]?.[0];
     expect(call.config.responseMimeType).toBe("application/json");
+    expect(call.config.responseJsonSchema).toEqual(investigationProviderResponseJsonSchema);
   });
 
   it("rejects invalid input with 400 and oversize bodies with 413", async () => {
