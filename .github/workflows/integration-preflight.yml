@@ -1,0 +1,123 @@
+name: PR7 integration preflight (offline)
+
+# Manual-only dry run. This workflow never pushes, deploys or invokes Gemini.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pr7-integration-preflight
+  cancel-in-progress: false
+
+jobs:
+  preflight:
+    if: github.repository == 'lutfim22/opsreplay' && github.ref == 'refs/heads/main' && github.run_attempt == 1
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - name: Checkout pinned main
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: 448f6c3cae11a47e8b4212a838eba282f03e7002
+          path: integration
+          persist-credentials: false
+      - name: Checkout pinned review branch commit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: 988c3fbf9ba68bec0859b66fdbc99d41d45c32ec
+          path: review
+          persist-credentials: false
+      - name: Verify exact inputs and attempt local-only merge
+        id: merge
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git -C integration rev-parse HEAD)" = 448f6c3cae11a47e8b4212a838eba282f03e7002
+          test "$(git -C review rev-parse HEAD)" = 988c3fbf9ba68bec0859b66fdbc99d41d45c32ec
+          git -C integration config user.name 'Offline Preflight'
+          git -C integration config user.email 'preflight@users.noreply.github.com'
+          git -C integration fetch --no-tags ../review HEAD
+          set +e
+          git -C integration merge --no-commit --no-ff FETCH_HEAD > "$RUNNER_TEMP/merge.log" 2>&1
+          result=$?
+          set -e
+          {
+            echo '# PR7 integration preflight'
+            echo ''
+            echo 'Inputs: pinned main 448f6c3; pinned review 988c3fb.'
+            echo ''
+            if [ "$result" -ne 0 ]; then
+              echo 'Merge result: CONFLICT or ERROR; no integrated tests run.'
+              echo ''
+              echo 'Unmerged paths:'
+              git -C integration diff --name-only --diff-filter=U | sed 's/^/- /'
+            else
+              echo 'Merge result: clean, uncommitted local merge; no push.'
+              echo ''
+              echo 'Changed paths:'
+              git -C integration diff --cached --name-only | sed 's/^/- /'
+            fi
+          } > "$RUNNER_TEMP/preflight-report.md"
+          cat "$RUNNER_TEMP/preflight-report.md" >> "$GITHUB_STEP_SUMMARY"
+          if [ "$result" -ne 0 ]; then
+            echo 'merge_ok=false' >> "$GITHUB_OUTPUT"
+            exit 1
+          fi
+          echo 'merge_ok=true' >> "$GITHUB_OUTPUT"
+      - name: Setup pnpm
+        if: steps.merge.outputs.merge_ok == 'true'
+        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6
+        with:
+          package_json_file: integration/package.json
+      - name: Setup Node
+        if: steps.merge.outputs.merge_ok == 'true'
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+      - name: Install dependencies (no lifecycle scripts)
+        if: steps.merge.outputs.merge_ok == 'true'
+        working-directory: integration
+        run: pnpm install --frozen-lockfile --ignore-scripts
+      - name: Offline checks
+        if: steps.merge.outputs.merge_ok == 'true'
+        working-directory: integration
+        shell: bash
+        run: |
+          set -uo pipefail
+          failed=0
+          for check in lint typecheck test build; do
+            echo "::group::$check"
+            if pnpm "$check"; then
+              echo "- $check: PASS" >> "$RUNNER_TEMP/preflight-report.md"
+            else
+              echo "- $check: FAIL" >> "$RUNNER_TEMP/preflight-report.md"
+              failed=1
+            fi
+            echo "::endgroup::"
+          done
+          if git diff --check && git diff --cached --check; then
+            echo '- git diff --check: PASS' >> "$RUNNER_TEMP/preflight-report.md"
+          else
+            echo '- git diff --check: FAIL' >> "$RUNNER_TEMP/preflight-report.md"
+            failed=1
+          fi
+          exit "$failed"
+      - name: Publish sanitized preflight report
+        if: always()
+        shell: bash
+        run: |
+          if [ -f "$RUNNER_TEMP/preflight-report.md" ]; then
+            cat "$RUNNER_TEMP/preflight-report.md" >> "$GITHUB_STEP_SUMMARY"
+            cp "$RUNNER_TEMP/preflight-report.md" preflight-report.md
+          else
+            printf 'Preflight stopped before merge report was created.\n' > preflight-report.md
+          fi
+      - name: Upload preflight report
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: pr7-integration-preflight-report
+          path: preflight-report.md
+          retention-days: 7
