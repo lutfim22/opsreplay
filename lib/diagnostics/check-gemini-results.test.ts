@@ -17,15 +17,43 @@ describe("sanitized Gemini summaries (offline)", () => {
     expect(checkGeminiResults(encode(input), model)).toHaveLength(3);
     expect(JSON.stringify(checkGeminiResults(encode(input), model))).not.toContain("SECRET_RESPONSE");
   });
+  it("accepts fail-fast prefixes for inspection while the CLI fails incomplete output", () => {
+    const firstFailure = rows();
+    firstFailure[0].category = "upstream_http_400";
+    firstFailure[0].outcome = "failure";
+    const secondFailure = rows();
+    secondFailure[1].category = "upstream_http_400";
+    secondFailure[1].outcome = "failure";
+
+    expect(checkGeminiResults(encode(firstFailure.slice(0, 1)), model)).toHaveLength(1);
+    expect(checkGeminiResults(encode(secondFailure.slice(0, 2)), model)).toHaveLength(2);
+    expect(checkGeminiResults(encode(rows().slice(0, 2)), model)).toHaveLength(2);
+    expect(() => checkGeminiResults(encode(rows().slice(0, 2).reverse()), model)).toThrow();
+
+    const directory = mkdtempSync(join(tmpdir(), "pr7-summary-test-"));
+    try {
+      const path = join(directory, "results.jsonl");
+      for (const partial of [firstFailure.slice(0, 1), secondFailure.slice(0, 2), rows().slice(0, 2)]) {
+        writeFileSync(path, encode(partial));
+        const result = spawnSync(process.execPath, ["--import", "tsx", "scripts/check-gemini-results.ts", path], {
+          env: { ...process.env, GEMINI_MODEL: model }, encoding: "utf8",
+        });
+        expect(result.status).toBe(1);
+        expect(result.stdout + result.stderr).not.toContain("PRIVATE_RAW_ERROR");
+      }
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
   it("preserves a failed output despite HTTP 200 for the workflow to reject", () => {
     const input = rows();
     input[1].category = "schema_validation_failed";
     input[1].outcome = "failure";
     expect(checkGeminiResults(encode(input), model)[1]).toMatchObject({ outcome: "failure", category: "schema_validation_failed" });
   });
-  it("rejects missing, extra, duplicate, reordered and wrong-model records", () => {
+  it("rejects extra, duplicate, reordered and wrong-model records", () => {
     const input = rows();
-    for (const data of [input.slice(0, 2), [...input, input[0]], [input[0], input[0], input[2]], [...input].reverse()]) {
+    for (const data of [[...input, input[0]], [input[0], input[0], input[2]], [...input].reverse()]) {
       expect(() => checkGeminiResults(encode(data), model)).toThrow();
     }
     expect(() => checkGeminiResults(encode(input), "gemini-3.8-flash")).toThrow();
@@ -36,7 +64,7 @@ describe("sanitized Gemini summaries (offline)", () => {
     input[1].category = "PRIVATE_RAW_ERROR";
     expect(() => checkGeminiResults(encode(input), model)).toThrow("Invalid probe summary.");
   });
-  it("CLI fails HTTP-200 validation failures and withholds unexpected output", () => {
+  it("CLI passes only the all-success three-probe run and withholds unexpected output", () => {
     const directory = mkdtempSync(join(tmpdir(), "pr7-summary-test-"));
     try {
       const path = join(directory, "results.jsonl");

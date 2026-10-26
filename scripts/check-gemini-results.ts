@@ -10,7 +10,9 @@ const names = [
 /** Parse only the existing diagnostic summaries. Never echo unexpected output. */
 export function checkGeminiResults(text: string, model: string) {
   const lines = text.trim().split(/\r?\n/);
-  if (lines.length !== names.length) throw new Error("Expected exactly three probe summaries.");
+  if (lines.length < 1 || lines.length > names.length) {
+    throw new Error("Expected one to three ordered probe summaries.");
+  }
   return lines.map((line, index) => {
     const value: unknown = JSON.parse(line);
     if (!value || typeof value !== "object") throw new Error("Invalid probe summary.");
@@ -37,7 +39,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
     if (!/^gemini-[a-z0-9][a-z0-9.-]{0,63}$/.test(model)) throw new Error("Invalid model.");
     const rows = checkGeminiResults(readFileSync(process.argv[2], "utf8"), model);
     for (const row of rows) console.log(JSON.stringify(row));
-    if (rows.some((row) => row.outcome !== "success" || row.category !== "success" || row.httpStatus !== 200)) {
+    if (rows.length !== names.length || rows.some((row) => row.outcome !== "success" || row.category !== "success" || row.httpStatus !== 200)) {
       process.exitCode = 1;
     }
   } catch {
