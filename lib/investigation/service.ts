@@ -2,14 +2,14 @@ import { InvestigationError } from "@/lib/investigation/errors";
 import type { InvestigationConfig } from "@/lib/investigation/config";
 import { findEvidenceProblems } from "@/lib/investigation/evidence";
 import { buildUserPrompt, SYSTEM_INSTRUCTION } from "@/lib/investigation/prompt";
-import { investigationResponseJsonSchema, investigationResultSchema, MAX_PROMPT_BYTES } from "@/lib/investigation/schema";
+import { investigationProviderResponseJsonSchema, investigationResultSchema, MAX_PROMPT_BYTES } from "@/lib/investigation/schema";
 import type { InvestigateRequest, InvestigateSuccess } from "@/lib/investigation/schema";
 
 export interface GeneratorRequest {
   model: string;
   systemInstruction: string;
   prompt: string;
-  responseJsonSchema: typeof investigationResponseJsonSchema;
+  responseJsonSchema: typeof investigationProviderResponseJsonSchema;
   eventCount: number;
   timeoutMs: number;
 }
@@ -35,7 +35,7 @@ export async function investigate(
     model: config.model,
     systemInstruction: SYSTEM_INSTRUCTION,
     prompt,
-    responseJsonSchema: investigationResponseJsonSchema,
+    responseJsonSchema: investigationProviderResponseJsonSchema,
     eventCount: request.events.length,
     timeoutMs: config.timeoutMs,
   });
