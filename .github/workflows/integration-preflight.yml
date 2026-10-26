@@ -23,12 +23,14 @@ jobs:
           ref: 448f6c3cae11a47e8b4212a838eba282f03e7002
           path: integration
           persist-credentials: false
+          fetch-depth: 0
       - name: Checkout pinned review branch commit
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: 988c3fbf9ba68bec0859b66fdbc99d41d45c32ec
           path: review
           persist-credentials: false
+          fetch-depth: 0
       - name: Verify exact inputs and attempt local-only merge
         id: merge
         shell: bash
