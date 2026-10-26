@@ -9,6 +9,7 @@ import {
   DEFAULT_DIAGNOSTIC_TIMEOUT_MS,
   readDiagnosticConfig,
   runProbe,
+  runProbes,
 } from "@/scripts/gemini-diagnostics";
 import {
   investigationResponseJsonSchema,
@@ -114,6 +115,29 @@ describe("probe construction and execution (mocked)", () => {
     const line = String(log.mock.calls[0]?.[0]);
     expect(JSON.parse(line)).toMatchObject({ category: "upstream_http_504", httpStatus: 504, outcome: "failure" });
     expect(line).not.toContain("SECRET-DETAIL");
+  });
+
+  it("stops before later probes after a mocked schema rejection", async () => {
+    const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
+    const previous = process.exitCode;
+    try {
+      const generateContent = vi
+        .fn()
+        .mockResolvedValueOnce({ text: '{"ok":true}' })
+        .mockRejectedValueOnce(new ApiError({ message: "PRIVATE_PROVIDER_DETAIL", status: 400 }));
+      const client = { models: { generateContent } } as unknown as GoogleGenAI;
+
+      await runProbes(client, "gemini-3.6-flash", 1000);
+
+      expect(generateContent).toHaveBeenCalledTimes(2);
+      expect(generateContent.mock.calls[0]?.[0].config.responseJsonSchema).toBeUndefined();
+      expect(generateContent.mock.calls[1]?.[0].config.responseJsonSchema).toBe(investigationResponseJsonSchema);
+      expect(log).toHaveBeenCalledTimes(2);
+      expect(String(log.mock.calls[1]?.[0])).not.toContain("PRIVATE_PROVIDER_DETAIL");
+      expect(process.exitCode).toBe(1);
+    } finally {
+      process.exitCode = previous;
+    }
   });
 
   it("flags schema-invalid output", async () => {

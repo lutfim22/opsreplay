@@ -72,7 +72,7 @@ export function createProbes(): Probe[] {
   ];
 }
 
-export async function runProbe(ai: GoogleGenAI, probe: Probe, model: string, timeoutMs: number): Promise<void> {
+export async function runProbe(ai: GoogleGenAI, probe: Probe, model: string, timeoutMs: number): Promise<boolean> {
   const startedAt = Date.now();
   const controller = new AbortController();
   let deadlineTimer: ReturnType<typeof setTimeout> | undefined;
@@ -122,6 +122,7 @@ export async function runProbe(ai: GoogleGenAI, probe: Probe, model: string, tim
         eventCount: probe.eventCount,
       }),
     );
+    return validOutput;
   } catch (error) {
     const failure = classifyDiagnosticFailure(error);
     console.log(
@@ -136,8 +137,16 @@ export async function runProbe(ai: GoogleGenAI, probe: Probe, model: string, tim
       }),
     );
     process.exitCode = 1;
+    return false;
   } finally {
     clearTimeout(deadlineTimer);
+  }
+}
+
+/** Stop after the first unsuccessful probe so a known failure does not consume more provider quota. */
+export async function runProbes(ai: GoogleGenAI, model: string, timeoutMs: number): Promise<void> {
+  for (const probe of createProbes()) {
+    if (!(await runProbe(ai, probe, model, timeoutMs))) break;
   }
 }
 
@@ -166,9 +175,7 @@ export async function runGeminiDiagnostics(): Promise<void> {
   }
 
   const ai = new GoogleGenAI({ apiKey: config.apiKey });
-  for (const probe of createProbes()) {
-    await runProbe(ai, probe, config.model, config.timeoutMs);
-  }
+  await runProbes(ai, config.model, config.timeoutMs);
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
