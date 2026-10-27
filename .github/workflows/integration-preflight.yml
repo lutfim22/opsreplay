@@ -72,8 +72,29 @@ jobs:
             fi
           } > "$RUNNER_TEMP/preflight-report.md"
           if [ "$result" -ne 0 ]; then
-            echo 'merge_ok=false' >> "$GITHUB_OUTPUT"
-            exit 1
+            # Resolve only the two conflicts observed in run 40366722736.
+            # Keep PR #20's trusted checker and tests from pinned main.
+            mapfile -t unmerged < <(git -C integration diff --name-only --diff-filter=U)
+            expected_a='lib/diagnostics/check-gemini-results.test.ts'
+            expected_b='scripts/check-gemini-results.ts'
+            if [ "${#unmerged[@]}" -ne 2 ] || [ "${unmerged[0]}" != "$expected_a" ] || [ "${unmerged[1]}" != "$expected_b" ]; then
+              echo 'Unexpected conflict set or Git error; refusing automatic resolution.' >> "$RUNNER_TEMP/preflight-report.md"
+              echo 'merge_ok=false' >> "$GITHUB_OUTPUT"
+              exit 1
+            fi
+            git -C integration checkout --ours -- "$expected_a" "$expected_b"
+            git -C integration add -- "$expected_a" "$expected_b"
+            if [ -n "$(git -C integration ls-files -u)" ]; then
+              echo 'Unresolved index entries remain; stopping.' >> "$RUNNER_TEMP/preflight-report.md"
+              echo 'merge_ok=false' >> "$GITHUB_OUTPUT"
+              exit 1
+            fi
+            {
+              echo ''
+              echo 'Provisional resolution: kept pinned main PR #20 versions of both conflicting paths.'
+              echo 'This is NOT a final reviewed integration; branch-only tests/redaction coverage still need reconciliation.'
+              echo 'All other auto-merged files require human security review.'
+            } >> "$RUNNER_TEMP/preflight-report.md"
           fi
           echo 'merge_ok=true' >> "$GITHUB_OUTPUT"
       - name: Setup pnpm
