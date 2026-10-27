@@ -11,6 +11,14 @@ repository-restricted and first-attempt-only. Its approved application target is
 `29801e52385cf8a7ceb481157e727f8bebec66f7`. An input and protected-environment
 variable `INTEGRATION_APPROVED_TARGET_SHA` must both equal that literal.
 
+Only owner account `lutfim22` may initiate the job: both `github.actor` and
+`github.triggering_actor` must match. The protected-environment variable
+`INTEGRATION_APPROVED_CONTROL_SHA` must equal the exact full dispatch `github.sha`.
+Missing, malformed or mismatched control approval fails before checkout/install
+or provider access. A new control commit requires a new explicit review and
+approved-control value; a branch name or PR-head/preview SHA is not an approval
+for the eventual main merge commit.
+
 The workflow checks out its exact dispatch control SHA and verifies that the target
 is an ancestor. Every changed path between target and control must be one of the
 explicitly listed verification scripts, tests, workflow or documentation paths.
@@ -39,16 +47,37 @@ unsuccessful summary or nonzero probe exit fails the workflow. Stdout/stderr are
 captured privately and deleted unconditionally, without artifact upload. Raw
 errors, prompts, event IDs, model responses, keys and headers are never published.
 
+## Solo-account approval model
+
+This path is for a solo developer: `lutfim22` both starts the workflow and later
+approves the environment deployment. It deliberately allows self-review in
+`integration-live-verification` while retaining a required reviewer and disabling
+administrator bypass. There is **no independent second-person review**. An owner
+must explicitly accept this trade-off before setup or execution. Actor restrictions
+and the approved-control SHA reduce accidental/wrong-source execution; they do
+not make the two actions independent or protect against a compromised owner account.
+
+The original PR7 environment/workflow retains its existing policy. Do not disable
+protections there, or change the application AI gate, to make this path work.
+
 ## Required owner actions before any future dispatch
 
-1. Review and separately approve merging this draft control change. A workflow on
+1. Review and separately approve merging the solo control change. A workflow on
    a draft branch is not a dispatch workaround for GitHub's default-branch rule.
-2. Provision and verify `integration-live-verification` protections: required
-   reviewers, prevent self-review, no administrator bypass and main-only deployment
-   policy. Naming an environment in YAML does not establish these protections.
-   Do not dispatch if the repository plan cannot enforce them.
+2. In a browser, open repository **Settings → Environments → integration-live-verification**
+   (create it only under separate setup authorization). Enable **Required reviewers**
+   with `lutfim22`. Leave **Prevent self-review** unchecked for this environment.
+   Disable **Allow administrators to bypass configured protection rules**. Under
+   **Deployment branches and tags**, select **Selected branches and tags** and allow
+   only the `main` branch, without a tag wildcard. Save and verify all settings.
+   Naming an environment in YAML does not establish these protections. Do not
+   dispatch if the repository plan cannot enforce the required-reviewer gate.
 3. Through a separately approved setup, put `INTEGRATION_GEMINI_API_KEY` in that
-   environment only and set `INTEGRATION_APPROVED_TARGET_SHA` to the target above.
+   environment only. Under that environment's variables, set
+   `INTEGRATION_APPROVED_TARGET_SHA` to the target above and
+   `INTEGRATION_APPROVED_CONTROL_SHA` to the exact reviewed full main merge commit
+   containing this solo change, after its separately approved merge. Do not use the
+   application target SHA in place of the control merge SHA.
    The dedicated secret name prevents fallback to the legacy repository
    `GEMINI_API_KEY`. Do not create a repository/organization secret with the new
    name either. The workflow maps it to the SDK's `GEMINI_API_KEY` only in the
@@ -62,6 +91,18 @@ errors, prompts, event IDs, model responses, keys and headers are never publishe
    naming both control and target SHA, model, timeout and monetary limit. The
    `approval_issue` input is a reference; it cannot machine-verify human consent.
    The protected reviewer must verify all inputs before releasing the job.
+
+After all prerequisites and fresh one-run permission are confirmed, the owner
+uses **Actions → Reviewed reduced-schema verification → Run workflow** on `main`,
+with the agreed target/model/deadline/issue inputs. The run then waits at the
+environment gate. Open that run's **Review deployments**, select
+`integration-live-verification`, inspect the exact control SHA and approved scope,
+then choose **Approve and deploy** to release the single probe. The GitHub wording
+refers to the environment job: this does not deploy the application or enable AI.
+Do not use an administrator bypass. Verify the required-reviewer gate in Settings
+before dispatch; a live run is not a safe test of environment protection. If an
+unexpected execution starts, cancel it, treat that run's one-request permission
+as consumed and do not rerun without fresh authorization.
 
 The CLI additionally requires `INTEGRATION_VERIFICATION_AUTHORIZED=1`, the exact
 `TARGET_SHA`, a key, explicit `GEMINI_MODEL` and `GEMINI_TIMEOUT_MS`; missing or

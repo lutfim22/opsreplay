@@ -9,7 +9,7 @@ import { INTEGRATION_TARGET_SHA } from "@/scripts/integration-verification-contr
 const source = readFileSync(".github/workflows/integration-verification.yml", "utf8");
 interface Step { name?: string; uses?: string; run?: string; env?: Record<string, string>; with?: Record<string, unknown>; if?: string }
 const workflow = parse(source) as { on: Record<string, unknown>; permissions: Record<string, string>;
-  jobs: { verify: { if: string; environment: string; steps: Step[] } } };
+  jobs: { verify: { if: string; environment: string; env: Record<string, string>; steps: Step[] } } };
 const steps = workflow.jobs.verify.steps;
 
 function collectUses(value: unknown): unknown[] {
@@ -30,17 +30,46 @@ function assertActions(text: string) {
 }
 
 describe("integration verification workflow security", () => {
-  it("is manual, repository/main/first-attempt restricted and references a protected environment", () => {
+  it("is manual, owner-only, repository/main/first-attempt restricted and references a protected environment", () => {
     expect(Object.keys(workflow.on)).toEqual(["workflow_dispatch"]);
     expect(workflow.permissions).toEqual({ contents: "read" });
-    expect(workflow.jobs.verify.if).toBe("github.repository == 'lutfim22/opsreplay' && github.ref == 'refs/heads/main' && github.run_attempt == 1");
+    expect(workflow.jobs.verify.if).toBe("github.repository == 'lutfim22/opsreplay' && github.ref == 'refs/heads/main' && github.run_attempt == 1 && github.actor == 'lutfim22' && github.triggering_actor == 'lutfim22'");
     expect(workflow.jobs.verify.environment).toBe("integration-live-verification");
     const guard = steps.find((step) => step.name === "Validate approved inputs")!.run!;
     expect(guard).toContain(`test "$TARGET_SHA" = ${INTEGRATION_TARGET_SHA}`);
     expect(guard).toContain('test "$APPROVED_TARGET_SHA" = "$TARGET_SHA"');
+    expect(guard).toContain('test "$APPROVED_CONTROL_SHA" = "$CONTROL_SHA"');
+    expect(workflow.jobs.verify.env.CONTROL_SHA).toBe("${{ github.sha }}");
+    expect(workflow.jobs.verify.env.APPROVED_CONTROL_SHA).toBe("${{ vars.INTEGRATION_APPROVED_CONTROL_SHA }}");
     expect(guard).toContain("10#$TIMEOUT_SECONDS <= 25");
     const checkout = steps.find((step) => step.uses?.startsWith("actions/checkout@"))!;
     expect(checkout.with).toEqual({ ref: "${{ github.sha }}", "fetch-depth": 0, "persist-credentials": false });
+  });
+
+  it.each([
+    ["matching approved commits", {}, true],
+    ["missing control approval", { APPROVED_CONTROL_SHA: "" }, false],
+    ["different approved control", { APPROVED_CONTROL_SHA: "b".repeat(40) }, false],
+    ["branch name as control", { CONTROL_SHA: "main", APPROVED_CONTROL_SHA: "main" }, false],
+    ["missing control SHA", { CONTROL_SHA: "", APPROVED_CONTROL_SHA: "" }, false],
+    ["different application target", { TARGET_SHA: "b".repeat(40), APPROVED_TARGET_SHA: "b".repeat(40) }, false],
+    ["over-limit deadline", { TIMEOUT_SECONDS: "26" }, false],
+  ])("runs the actual input guard with %s", (_name, override, allowed) => {
+    const directory = mkdtempSync(join(tmpdir(), "integration-inputs-"));
+    try {
+      const script = steps.find((step) => step.name === "Validate approved inputs")!.run!;
+      const result = spawnSync("bash", ["-c", script], {
+        cwd: directory,
+        env: { ...process.env, TARGET_SHA: INTEGRATION_TARGET_SHA, APPROVED_TARGET_SHA: INTEGRATION_TARGET_SHA,
+          CONTROL_SHA: "a".repeat(40), APPROVED_CONTROL_SHA: "a".repeat(40), GEMINI_MODEL: "gemini-test",
+          TIMEOUT_SECONDS: "25", APPROVAL_ISSUE: "14", GITHUB_ENV: join(directory, "github-env"), ...override },
+        encoding: "utf8",
+      });
+      expect(result.status, result.stderr).toBe(allowed ? 0 : 1);
+      if (allowed) expect(readFileSync(join(directory, "github-env"), "utf8")).toBe("GEMINI_TIMEOUT_MS=25000\n");
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
   });
 
   it("pins every semantic action reference, including quoted and flow-mapping uses keys", () => {
