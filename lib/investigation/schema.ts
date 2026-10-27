@@ -167,6 +167,7 @@ export const investigateSuccessSchema = z.object({
 });
 
 export const INVESTIGATION_ERROR_KINDS = [
+  "disabled",
   "invalid_input",
   "payload_too_large",
   "forbidden",

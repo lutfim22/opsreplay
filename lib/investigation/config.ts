@@ -3,6 +3,8 @@ export const DEFAULT_TIMEOUT_MS = 25_000;
 export const DEFAULT_RATE_LIMIT_PER_MINUTE = 10;
 
 export interface InvestigationConfig {
+  /** Explicit server-side opt-in; credentials alone never enable investigation. */
+  enabled: boolean;
   /** Undefined when GEMINI_API_KEY is not set. */
   apiKey: string | undefined;
   model: string;
@@ -24,6 +26,7 @@ function positiveInt(value: string | undefined, fallback: number, max: number): 
 export function readConfig(env: Record<string, string | undefined> = process.env): InvestigationConfig {
   const model = env.GEMINI_MODEL?.trim();
   return {
+    enabled: env.INVESTIGATE_ENABLED === "1",
     apiKey: env.GEMINI_API_KEY?.trim() || undefined,
     model: model && MODEL_PATTERN.test(model) ? model : DEFAULT_GEMINI_MODEL,
     timeoutMs: positiveInt(env.GEMINI_TIMEOUT_MS, DEFAULT_TIMEOUT_MS, 55_000),

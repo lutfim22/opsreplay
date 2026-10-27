@@ -17,7 +17,7 @@ const confidenceStyles: Record<Confidence, string> = {
   high: "border-red-500/30 bg-red-500/10 text-red-700 dark:text-red-300",
 };
 
-const NON_RETRYABLE = new Set<InvestigationFailed["kind"]>(["invalid_input", "payload_too_large", "forbidden"]);
+const NON_RETRYABLE = new Set<InvestigationFailed["kind"]>(["disabled", "invalid_input", "payload_too_large", "forbidden"]);
 
 interface Run {
   /** Events as submitted; evidence chips resolve against these even if the filters change later. */
@@ -78,7 +78,7 @@ function ErrorState({ outcome, onRetry }: { outcome: InvestigationFailed; onRetr
     <div role="alert" className="space-y-2 rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-sm">
       <p className="flex items-center gap-2 font-medium">
         <AlertTriangle className="size-4" aria-hidden="true" />
-        {missingKey ? "AI investigation is not set up" : "Investigation failed"}
+        {outcome.kind === "disabled" ? "AI investigation is disabled" : missingKey ? "AI investigation is not set up" : "Investigation failed"}
       </p>
       <p className="break-words">{outcome.message}</p>
       {missingKey && (
