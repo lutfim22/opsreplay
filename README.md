@@ -67,6 +67,44 @@ for demonstration only and does not mean the simulated events happened at that t
 - Temporal proximity (including aligned time) is not evidence of causation; no correlation is performed.
 - IoT data is simulated only; no real hardware, database, authentication or AI analysis.
 
+## AI investigation (Gemini, read-only)
+**Investigate with AI** on `/timeline` sends the events currently shown (after filters) to
+`POST /api/investigate`, which asks Google Gemini for a structured investigation: summary, observed facts,
+hypotheses (confidence low/medium/high, supporting events, reasoning, missing evidence), recommended read-only
+checks and limitations. It never runs commands and never changes repositories or devices.
+
+### How it stays grounded
+- Requests are validated with Zod (`OpsEvent` schema, max 200 events, max 512 KB, JSON only, same-origin only).
+- Gemini uses structured JSON output; the response is re-validated with Zod and **every referenced event id
+  (and any id-shaped text such as `sim-0001` or `github:owner/repo:commit:sha`) must belong to the submitted events**.
+  Otherwise the response is discarded and an error is shown. There is no fake or fallback analysis.
+- Each event is labelled `real_github` or `simulated_iot` and sent with its **original** timestamp. Demo Time
+  Alignment is only a display option and is never sent as evidence.
+- Event text (commit messages, titles, payloads) is untrusted: it is passed as escaped, size-bounded data inside a
+  delimited block, and the instructions live only in the server-side system prompt (`lib/investigation/prompt.ts`).
+- Secrets, prompts and model configuration stay on the server. Diagnostics log only the HTTP status,
+  fixed error category, elapsed time, attempts, model id and event count—never keys or event content.
+
+### Configuration
+| Variable | Required | Purpose |
+| --- | --- | --- |
+| `GEMINI_API_KEY` | yes | Server-only Gemini API key (create one in [Google AI Studio](https://aistudio.google.com/apikey)). |
+| `GEMINI_MODEL` | no | Model id, default `gemini-2.5-flash`. Must match `gemini-*`; must support structured JSON output. |
+| `GEMINI_TIMEOUT_MS` | no | Total upstream deadline, default `25000` (max `55000`; the route allows 60 seconds). |
+| `UPSTASH_REDIS_REST_URL` | production | HTTPS REST endpoint of an Upstash Redis database. |
+| `UPSTASH_REDIS_REST_TOKEN` | production | Server-only REST token for that database. |
+| `INVESTIGATE_LOCAL_DEV_BYPASS` | local only | Set to `1` to run locally without Redis. Production ignores it. |
+
+- **Local:** `cp .env.example .env.local`, set `GEMINI_API_KEY` and either both Upstash values or `INVESTIGATE_LOCAL_DEV_BYPASS=1`, then restart `pnpm dev`. The local bypass uses a per-process limiter only. `.env.local` is git-ignored.
+- **Vercel:** Create an Upstash Redis database, set `GEMINI_API_KEY`, `UPSTASH_REDIS_REST_URL`, and `UPSTASH_REDIS_REST_TOKEN` as server-side Vercel environment variables, and redeploy. Use separate Redis databases for Production and Preview so previews cannot consume production allowance. Mark secrets Sensitive. Do **not** use a `NEXT_PUBLIC_` prefix. Requests fail closed with 503 if Redis configuration is missing or the service is unavailable.
+- Without a key the UI shows a "not set up" state and the endpoint returns `503`. CI and `pnpm test` use mocked
+  Gemini responses and need no key.
+
+### Quota and spending controls
+The server reserves a request in Upstash Redis before calling Gemini. One atomic Redis script enforces 100 requests globally per UTC day, 5 per client per minute, 15 per client per UTC day, and 3 concurrent Gemini calls globally. Denials return 429 and `Retry-After`. Redis uses its own clock. A failed Gemini call still spends one request allowance; up to three Gemini attempts may occur within one accepted request. Input is capped at 512 KiB/200 events, the prompt at 256 KiB, output at 8192 tokens, and the upstream deadline at 55 seconds. These are **request allowances, not a guaranteed cost cap**.
+
+On direct Vercel deployments, the app uses the platform-supplied `X-Forwarded-For` address for client buckets. Do not place an untrusted proxy in front of Vercel without reviewing its forwarded-header behavior. Missing or ambiguous addresses use one shared anonymous bucket; the global allowance always applies. Origin checks only reduce cross-site browser requests and are not authentication. Anonymous visitors can still share an IP, rotate addresses, or make direct requests. Use Google AI Studio/Cloud project quotas and billing alerts appropriate to the demo; billing alerts do not enforce a hard spending cap. If a provider hard cap is unavailable, remaining spend risk is bounded only by request allowances, token/deadline limits, and provider quota. Upstash REST calls add one reservation and one lease release per accepted request; monitor Redis availability and quota usage. No paid Upstash resource is created by this code.
+
 ## Gemini diagnostics (manual, no API endpoint)
 
 For the separately approved immutable PR7 verification workflow and its dispatch,

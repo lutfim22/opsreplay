@@ -1,0 +1,200 @@
+import { z } from "zod";
+import { opsEventSchema } from "@/lib/events/schema";
+
+/** Hard limits that bound cost and abuse. Enforced on the server; the UI mirrors them. */
+export const MAX_EVENTS = 200;
+export const MAX_BODY_BYTES = 512 * 1024;
+export const MAX_PROMPT_BYTES = 256 * 1024;
+
+export const investigateRequestSchema = z
+  .object({
+    events: z.array(opsEventSchema).min(1, "Select at least one event.").max(MAX_EVENTS, `At most ${MAX_EVENTS} events can be analyzed at once.`),
+    /** Whether the UI was showing Demo Time Alignment. Only a display hint; it is never evidence. */
+    demoAlignment: z.boolean().optional(),
+  })
+  .strict();
+
+export type InvestigateRequest = z.infer<typeof investigateRequestSchema>;
+
+export const confidenceSchema = z.enum(["low", "medium", "high"]);
+export type Confidence = z.infer<typeof confidenceSchema>;
+
+const eventIds = z.array(z.string().min(1).max(300)).min(1).max(30);
+
+export const investigationResultSchema = z.object({
+  summary: z.string().trim().min(1).max(2000),
+  observedFacts: z
+    .array(z.object({ statement: z.string().trim().min(1).max(600), eventIds }))
+    .max(30),
+  hypotheses: z
+    .array(
+      z.object({
+        title: z.string().trim().min(1).max(200),
+        confidence: confidenceSchema,
+        supportingEventIds: eventIds,
+        reasoning: z.string().trim().min(1).max(1500),
+        missingEvidence: z.array(z.string().trim().min(1).max(400)).max(10),
+      }),
+    )
+    .max(8),
+  recommendedNextChecks: z.array(z.string().trim().min(1).max(400)).max(10),
+  limitations: z.array(z.string().trim().min(1).max(400)).max(10),
+});
+
+export type InvestigationResult = z.infer<typeof investigationResultSchema>;
+
+/**
+ * JSON Schema handed to Gemini for structured output. Kept to the widely supported subset on
+ * purpose; `investigationResultSchema` remains the authority and re-validates every response.
+ */
+export const investigationResponseJsonSchema = {
+  type: "object",
+  properties: {
+    summary: {
+      type: "string",
+      minLength: 1,
+      maxLength: 2000,
+      description: "2-4 sentences restating only what the observed facts show. No unverified claims.",
+    },
+    observedFacts: {
+      type: "array",
+      maxItems: 30,
+      description: "At most 30 facts read directly from the submitted events. Each statement is 1-600 characters and cites 1-30 exact submitted event ids (each 1-300 characters).",
+      items: {
+        type: "object",
+        properties: {
+          statement: { type: "string", minLength: 1, maxLength: 600 },
+          eventIds: {
+            type: "array",
+            minItems: 1,
+            maxItems: 30,
+            items: { type: "string", minLength: 1, maxLength: 300 },
+            description: "1-30 exact ids of submitted events.",
+          },
+        },
+        required: ["statement", "eventIds"],
+      },
+    },
+    hypotheses: {
+      type: "array",
+      maxItems: 8,
+      description: "At most 8 possible explanations; they are not confirmed root causes. Titles are 1-200 characters, reasoning is 1-1500 characters, and each hypothesis cites 1-30 exact submitted event ids (each 1-300 characters). Include at most 10 missing-evidence items, each 1-400 characters.",
+      items: {
+        type: "object",
+        properties: {
+          title: { type: "string", minLength: 1, maxLength: 200 },
+          confidence: { type: "string", enum: ["low", "medium", "high"] },
+          supportingEventIds: {
+            type: "array",
+            minItems: 1,
+            maxItems: 30,
+            items: { type: "string", minLength: 1, maxLength: 300 },
+            description: "1-30 exact ids of submitted events.",
+          },
+          reasoning: { type: "string", minLength: 1, maxLength: 1500 },
+          missingEvidence: {
+            type: "array",
+            maxItems: 10,
+            items: { type: "string", minLength: 1, maxLength: 400 },
+            description: "At most 10 items describing what would be needed to confirm or reject this.",
+          },
+        },
+        required: ["title", "confidence", "supportingEventIds", "reasoning", "missingEvidence"],
+      },
+    },
+    recommendedNextChecks: {
+      type: "array",
+      maxItems: 10,
+      items: { type: "string", minLength: 1, maxLength: 400 },
+      description: "At most 10 read-only checks a human could perform, each 1-400 characters.",
+    },
+    limitations: {
+      type: "array",
+      maxItems: 10,
+      items: { type: "string", minLength: 1, maxLength: 400 },
+      description: "At most 10 limitations, each 1-400 characters.",
+    },
+  },
+  required: ["summary", "observedFacts", "hypotheses", "recommendedNextChecks", "limitations"],
+} as const;
+
+/** Minimal Gemini-facing shape. Runtime limits and evidence checks stay application-side. */
+export const investigationProviderResponseJsonSchema = {
+  type: "object",
+  properties: {
+    summary: { type: "string" },
+    observedFacts: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: {
+          statement: { type: "string" },
+          eventIds: { type: "array", items: { type: "string" } },
+        },
+        required: ["statement", "eventIds"],
+      },
+    },
+    hypotheses: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: {
+          title: { type: "string" },
+          confidence: { type: "string", enum: ["low", "medium", "high"] },
+          supportingEventIds: { type: "array", items: { type: "string" } },
+          reasoning: { type: "string" },
+          missingEvidence: { type: "array", items: { type: "string" } },
+        },
+        required: ["title", "confidence", "supportingEventIds", "reasoning", "missingEvidence"],
+      },
+    },
+    recommendedNextChecks: { type: "array", items: { type: "string" } },
+    limitations: { type: "array", items: { type: "string" } },
+  },
+  required: ["summary", "observedFacts", "hypotheses", "recommendedNextChecks", "limitations"],
+} as const;
+
+export interface InvestigationMeta {
+  model: string;
+  eventCount: number;
+  generatedAt: string;
+}
+
+export const investigateSuccessSchema = z.object({
+  ok: z.literal(true),
+  result: investigationResultSchema,
+  meta: z.object({ model: z.string(), eventCount: z.number(), generatedAt: z.string() }),
+});
+
+export const INVESTIGATION_ERROR_KINDS = [
+  "invalid_input",
+  "payload_too_large",
+  "forbidden",
+  "rate_limited",
+  "not_configured",
+  "quota_unavailable",
+  "timeout",
+  "quota",
+  "upstream",
+  "invalid_model_output",
+] as const;
+
+export type InvestigationErrorKind = (typeof INVESTIGATION_ERROR_KINDS)[number];
+
+export const investigateFailureSchema = z.object({
+  ok: z.literal(false),
+  error: z.object({
+    kind: z.enum(INVESTIGATION_ERROR_KINDS),
+    message: z.string(),
+    retryAfterSeconds: z.number().optional(),
+  }),
+});
+
+export type InvestigateSuccess = z.infer<typeof investigateSuccessSchema>;
+export type InvestigateFailure = z.infer<typeof investigateFailureSchema>;
+
+export const INVESTIGATION_DISCLAIMERS = [
+  "Hypotheses are not confirmed root causes. They are AI-generated suggestions grounded in the selected events and must be verified by a person.",
+  "Simulated IoT telemetry is generated by the OpsReplay simulator. It is not real hardware evidence.",
+  "Temporal proximity, including Demo Time Alignment, is not evidence of causation.",
+] as const;
