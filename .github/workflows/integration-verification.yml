@@ -1,0 +1,108 @@
+name: Reviewed reduced-schema verification
+
+# Preparation only. A merge never authorizes a dispatch or provider usage.
+on:
+  workflow_dispatch:
+    inputs:
+      target_sha:
+        description: Approved full integration SHA (must equal the literal allowlist)
+        required: true
+        type: string
+      model:
+        description: Explicitly confirmed deployment model; no fallback
+        required: true
+        type: string
+      timeout_seconds:
+        description: Approved single-request deadline, seconds (1-25)
+        required: true
+        type: string
+      approval_issue:
+        description: Issue containing fresh one-request and cost authorization
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: reviewed-integration-verification
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    if: github.repository == 'lutfim22/opsreplay' && github.ref == 'refs/heads/main' && github.run_attempt == 1
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    # Must already have required reviewers, no self-review/bypass and main-only deployment policy.
+    environment: integration-live-verification
+    env:
+      TARGET_SHA: ${{ inputs.target_sha }}
+      APPROVED_TARGET_SHA: ${{ vars.INTEGRATION_APPROVED_TARGET_SHA }}
+      CONTROL_SHA: ${{ github.sha }}
+      GEMINI_MODEL: ${{ inputs.model }}
+      TIMEOUT_SECONDS: ${{ inputs.timeout_seconds }}
+      APPROVAL_ISSUE: ${{ inputs.approval_issue }}
+    steps:
+      - name: Validate approved inputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$TARGET_SHA" = 29801e52385cf8a7ceb481157e727f8bebec66f7
+          test "$APPROVED_TARGET_SHA" = "$TARGET_SHA"
+          [[ "$GEMINI_MODEL" =~ ^gemini-[a-z0-9][a-z0-9.-]{0,63}$ ]]
+          [[ "$TIMEOUT_SECONDS" =~ ^[0-9]{1,2}$ ]]
+          (( 10#$TIMEOUT_SECONDS >= 1 && 10#$TIMEOUT_SECONDS <= 25 ))
+          [[ "$APPROVAL_ISSUE" =~ ^[1-9][0-9]{0,9}$ ]]
+          echo "GEMINI_TIMEOUT_MS=$((10#$TIMEOUT_SECONDS * 1000))" >> "$GITHUB_ENV"
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Verify control and pinned application parity
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$CONTROL_SHA"
+          git merge-base --is-ancestor "$TARGET_SHA" "$CONTROL_SHA"
+          # Only this reviewed verification harness and its docs/tests may differ.
+          changed_paths="$(git diff --name-only "$TARGET_SHA" "$CONTROL_SHA")"
+          while IFS= read -r path; do
+            case "$path" in
+              ''|README.md|docs/INTEGRATION_VERIFICATION.md|.github/workflows/integration-verification.yml|scripts/integration-verification-contract.ts|scripts/verify-gemini-integration.ts|scripts/check-integration-result.ts|lib/diagnostics/integration-verification.test.ts|lib/diagnostics/integration-workflow-security.test.ts) ;;
+              *) echo 'Unreviewed application or dependency difference; refusing provider access.'; exit 1 ;;
+            esac
+          done <<< "$changed_paths"
+      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+      - name: Install without provider secrets or lifecycle scripts
+        run: pnpm install --frozen-lockfile --ignore-scripts
+      - name: Run one reduced-schema request without retries
+        id: probe
+        shell: bash
+        env:
+          GEMINI_API_KEY: ${{ secrets.INTEGRATION_GEMINI_API_KEY }}
+          INTEGRATION_VERIFICATION_AUTHORIZED: "1"
+        run: |
+          set -uo pipefail
+          test -n "$GEMINI_API_KEY" || exit 1
+          umask 077
+          set +e
+          pnpm exec tsx scripts/verify-gemini-integration.ts > "$RUNNER_TEMP/integration-probe.jsonl" 2> "$RUNNER_TEMP/integration-probe.stderr"
+          probe_exit=$?
+          set -e
+          echo "exit_code=$probe_exit" >> "$GITHUB_OUTPUT"
+      - name: Validate sanitized summary and process status
+        shell: bash
+        env:
+          PROBE_EXIT_CODE: ${{ steps.probe.outputs.exit_code }}
+        run: |
+          set -euo pipefail
+          pnpm exec tsx scripts/check-integration-result.ts "$RUNNER_TEMP/integration-probe.jsonl"
+          test "$PROBE_EXIT_CODE" = 0
+      - name: Delete private output without artifact upload
+        if: always()
+        shell: bash
+        run: rm -f "$RUNNER_TEMP/integration-probe.jsonl" "$RUNNER_TEMP/integration-probe.stderr"
