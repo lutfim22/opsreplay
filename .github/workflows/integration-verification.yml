@@ -30,15 +30,17 @@ concurrency:
 
 jobs:
   verify:
-    if: github.repository == 'lutfim22/opsreplay' && github.ref == 'refs/heads/main' && github.run_attempt == 1
+    if: github.repository == 'lutfim22/opsreplay' && github.ref == 'refs/heads/main' && github.run_attempt == 1 && github.actor == 'lutfim22' && github.triggering_actor == 'lutfim22'
     runs-on: ubuntu-24.04
     timeout-minutes: 5
-    # Must already have required reviewers, no self-review/bypass and main-only deployment policy.
+    # Solo gate: required reviewer lutfim22, self-review allowed, admin bypass disabled, main-only.
+    # Owner must perform both Run workflow and Review deployments; this is not independent review.
     environment: integration-live-verification
     env:
       TARGET_SHA: ${{ inputs.target_sha }}
       APPROVED_TARGET_SHA: ${{ vars.INTEGRATION_APPROVED_TARGET_SHA }}
       CONTROL_SHA: ${{ github.sha }}
+      APPROVED_CONTROL_SHA: ${{ vars.INTEGRATION_APPROVED_CONTROL_SHA }}
       GEMINI_MODEL: ${{ inputs.model }}
       TIMEOUT_SECONDS: ${{ inputs.timeout_seconds }}
       APPROVAL_ISSUE: ${{ inputs.approval_issue }}
@@ -49,6 +51,8 @@ jobs:
           set -euo pipefail
           test "$TARGET_SHA" = 29801e52385cf8a7ceb481157e727f8bebec66f7
           test "$APPROVED_TARGET_SHA" = "$TARGET_SHA"
+          [[ "$CONTROL_SHA" =~ ^[a-f0-9]{40}$ ]]
+          test "$APPROVED_CONTROL_SHA" = "$CONTROL_SHA"
           [[ "$GEMINI_MODEL" =~ ^gemini-[a-z0-9][a-z0-9.-]{0,63}$ ]]
           [[ "$TIMEOUT_SECONDS" =~ ^[0-9]{1,2}$ ]]
           (( 10#$TIMEOUT_SECONDS >= 1 && 10#$TIMEOUT_SECONDS <= 25 ))
