@@ -1,0 +1,111 @@
+name: Reviewed isolated Redis verification
+
+# Preparation only. A merge is not permission to configure credentials, dispatch or spend.
+on:
+  workflow_dispatch:
+    inputs:
+      target_sha:
+        description: Approved baseline SHA (full literal allowlist)
+        required: true
+        type: string
+      database_host:
+        description: Approved dedicated EMPTY verification database hostname, without https or path
+        required: true
+        type: string
+      approval_issue:
+        description: Issue containing fresh database/write/request/cost authorization
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: reviewed-isolated-redis-verification
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    if: github.repository == 'lutfim22/opsreplay' && github.ref == 'refs/heads/main' && github.run_attempt == 1 && github.actor == 'lutfim22' && github.triggering_actor == 'lutfim22'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    # Solo owner release, self-review allowed, admin bypass disabled, main branch only.
+    environment: integration-redis-verification
+    env:
+      TARGET_SHA: ${{ inputs.target_sha }}
+      CONTROL_SHA: ${{ github.sha }}
+      REDIS_DATABASE_HOST: ${{ inputs.database_host }}
+      APPROVAL_ISSUE: ${{ inputs.approval_issue }}
+    steps:
+      - name: Validate approved Redis inputs
+        shell: bash
+        env:
+          APPROVED_TARGET_SHA: ${{ vars.INTEGRATION_REDIS_APPROVED_TARGET_SHA }}
+          APPROVED_CONTROL_SHA: ${{ vars.INTEGRATION_REDIS_APPROVED_CONTROL_SHA }}
+          APPROVED_REDIS_HOST: ${{ vars.INTEGRATION_REDIS_APPROVED_HOST }}
+          REDIS_ISOLATED_DATABASE: ${{ vars.INTEGRATION_REDIS_ISOLATED_DATABASE }}
+        run: |
+          set -euo pipefail
+          test "$TARGET_SHA" = 6b3e5996f1aded1b07cf2043e58e5c8e1115e798
+          test "$APPROVED_TARGET_SHA" = "$TARGET_SHA"
+          [[ "$CONTROL_SHA" =~ ^[a-f0-9]{40}$ ]]
+          test "$APPROVED_CONTROL_SHA" = "$CONTROL_SHA"
+          [[ "$REDIS_DATABASE_HOST" =~ ^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.upstash\.io$ ]]
+          test "$APPROVED_REDIS_HOST" = "$REDIS_DATABASE_HOST"
+          test "$REDIS_ISOLATED_DATABASE" = 1
+          [[ "$APPROVAL_ISSUE" =~ ^[1-9][0-9]{0,9}$ ]]
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Verify pinned Redis application parity
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$CONTROL_SHA"
+          git merge-base --is-ancestor "$TARGET_SHA" "$CONTROL_SHA"
+          changed_paths="$(git diff --name-only "$TARGET_SHA" "$CONTROL_SHA")"
+          while IFS= read -r path; do
+            case "$path" in
+              ''|.github/workflows/redis-verification.yml|scripts/redis-verification-contract.ts|scripts/verify-redis-integration.ts|scripts/check-redis-result.ts|lib/diagnostics/redis-verification.test.ts|lib/diagnostics/redis-workflow-security.test.ts|docs/INTEGRATION_VERIFICATION.md) ;;
+              *) echo 'Unreviewed application or dependency difference; refusing Redis access.'; exit 1 ;;
+            esac
+          done <<< "$changed_paths"
+      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+      - name: Install without Redis secrets or lifecycle scripts
+        run: pnpm install --frozen-lockfile --ignore-scripts
+      - name: Run bounded isolated Redis verification once
+        id: probe
+        shell: bash
+        env:
+          REDIS_VERIFICATION_AUTHORIZED: "1"
+          APPROVED_TARGET_SHA: ${{ vars.INTEGRATION_REDIS_APPROVED_TARGET_SHA }}
+          APPROVED_CONTROL_SHA: ${{ vars.INTEGRATION_REDIS_APPROVED_CONTROL_SHA }}
+          APPROVED_REDIS_HOST: ${{ vars.INTEGRATION_REDIS_APPROVED_HOST }}
+          REDIS_ISOLATED_DATABASE: ${{ vars.INTEGRATION_REDIS_ISOLATED_DATABASE }}
+          REDIS_VERIFICATION_REST_URL: ${{ secrets.INTEGRATION_REDIS_REST_URL }}
+          REDIS_VERIFICATION_REST_TOKEN: ${{ secrets.INTEGRATION_REDIS_REST_TOKEN }}
+        run: |
+          set -uo pipefail
+          umask 077
+          set +e
+          pnpm exec tsx scripts/verify-redis-integration.ts > "$RUNNER_TEMP/redis-probe.jsonl" 2> "$RUNNER_TEMP/redis-probe.stderr"
+          probe_exit=$?
+          set -e
+          echo "exit_code=$probe_exit" >> "$GITHUB_OUTPUT"
+      - name: Validate sanitized Redis summary and process status
+        shell: bash
+        env:
+          PROBE_EXIT_CODE: ${{ steps.probe.outputs.exit_code }}
+        run: |
+          set -euo pipefail
+          pnpm exec tsx scripts/check-redis-result.ts "$RUNNER_TEMP/redis-probe.jsonl"
+          test "$PROBE_EXIT_CODE" = 0
+      - name: Delete private Redis output without artifact upload
+        if: always()
+        shell: bash
+        run: rm -f "$RUNNER_TEMP/redis-probe.jsonl" "$RUNNER_TEMP/redis-probe.stderr"
