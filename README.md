@@ -116,6 +116,10 @@ On direct Vercel deployments, the app uses the platform-supplied `X-Forwarded-Fo
 
 ## Gemini diagnostics (manual, no API endpoint)
 
+For the proposed single-request verification of the reduced-schema integration,
+see [Reduced-schema integration verification](docs/INTEGRATION_VERIFICATION.md).
+It requires separate control-PR merge, protected-environment setup and live-run approval.
+
 These scripts call providers directly and are **not** controlled by `INVESTIGATE_ENABLED`. Every live
 diagnostic run still requires separate explicit authorization for its target, model, request count and cost.
 
