@@ -450,6 +450,13 @@ describe("untrusted event content", () => {
 });
 
 describe("config and rate limiting", () => {
+  it("enables investigation only with an exact server-side opt-in", () => {
+    for (const value of [undefined, "", "0", "true", "yes", " 1 "]) {
+      expect(readConfig({ INVESTIGATE_ENABLED: value, GEMINI_API_KEY: "test-key" }).enabled).toBe(false);
+    }
+    expect(readConfig({ INVESTIGATE_ENABLED: "1" }).enabled).toBe(true);
+  });
+
   it("reads the key and model from the environment with safe defaults", () => {
     expect(readConfig({}).apiKey).toBeUndefined();
     expect(readConfig({}).model).toBe(DEFAULT_GEMINI_MODEL);
@@ -476,6 +483,7 @@ describe("client response parsing", () => {
     const ok = { ok: true, result: validResult(), meta: { model: "m", eventCount: 2, generatedAt: "2026-01-01T00:00:00.000Z" } };
     expect(parseInvestigateResponse(ok).status).toBe("ready");
     expect(parseInvestigateResponse({ ok: false, error: { kind: "not_configured", message: "no key" } })).toMatchObject({ status: "error", kind: "not_configured" });
+    expect(parseInvestigateResponse({ ok: false, error: { kind: "disabled", message: "AI investigation is disabled on this server." } })).toMatchObject({ status: "error", kind: "disabled" });
     expect(parseInvestigateResponse({ ok: true, result: { summary: "x" } })).toMatchObject({ status: "error", kind: "invalid_response" });
     expect(parseInvestigateResponse(null)).toMatchObject({ status: "error", kind: "invalid_response" });
   });
@@ -488,6 +496,7 @@ describe("POST /api/investigate", () => {
     vi.resetModules();
     generateContent.mockReset();
     vi.unstubAllEnvs();
+    vi.stubEnv("INVESTIGATE_ENABLED", "1");
     vi.stubEnv("INVESTIGATE_LOCAL_DEV_BYPASS", "1");
     vi.doMock("@google/genai", async () => {
       const actual = await vi.importActual<typeof import("@google/genai")>("@google/genai");
@@ -504,6 +513,33 @@ describe("POST /api/investigate", () => {
     const { POST } = await import("@/app/api/investigate/route");
     return POST(jsonRequest(body, headers));
   }
+
+  it.each([undefined, "", "0", "true", "yes", " 1 "])("blocks investigation when the opt-in is %s, even with credentials", async (enabled) => {
+    vi.stubEnv("INVESTIGATE_ENABLED", enabled);
+    vi.stubEnv("NODE_ENV", "production");
+    vi.stubEnv("GEMINI_API_KEY", "test-key");
+    vi.stubEnv("UPSTASH_REDIS_REST_URL", "https://example.upstash.io");
+    vi.stubEnv("UPSTASH_REDIS_REST_TOKEN", "test-token");
+    const fetcher = vi.spyOn(globalThis, "fetch").mockImplementation(async () => {
+      throw new Error("disabled investigation must not make network requests");
+    });
+    const request = jsonRequest({ events: EVENTS });
+    try {
+      const { POST } = await import("@/app/api/investigate/route");
+      const res = await POST(request);
+      expect(res.status).toBe(503);
+      expect(res.headers.get("cache-control")).toBe("no-store");
+      expect(await res.json()).toMatchObject({
+        ok: false,
+        error: { kind: "disabled", message: "AI investigation is disabled on this server." },
+      });
+      expect(request.bodyUsed).toBe(false);
+      expect(fetcher).not.toHaveBeenCalled();
+      expect(generateContent).not.toHaveBeenCalled();
+    } finally {
+      fetcher.mockRestore();
+    }
+  });
 
   it("returns a missing-key error without calling Gemini", async () => {
     vi.stubEnv("GEMINI_API_KEY", "");

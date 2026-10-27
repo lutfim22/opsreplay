@@ -37,6 +37,7 @@ function failure(error: InvestigationError) {
 export async function POST(request: Request) {
   try {
     const config = readConfig();
+    if (!config.enabled) throw new InvestigationError("disabled");
     assertSameOrigin(request);
 
     if (!config.apiKey) throw new InvestigationError("not_configured");
