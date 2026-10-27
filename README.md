@@ -65,9 +65,59 @@ for demonstration only and does not mean the simulated events happened at that t
 - If GitHub is empty, rate-limited or unavailable, a warning is shown with simulated events only; GitHub events are never fabricated.
 - Only the latest 30 commits, PRs and workflow runs are loaded; GitHub timestamps are commit date, PR `updated_at` and workflow run `updated_at`.
 - Temporal proximity (including aligned time) is not evidence of causation; no correlation is performed.
-- IoT data is simulated only; no real hardware, database, authentication or AI analysis.
+- IoT data is simulated only; no real hardware, persisted event database or application authentication. Optional AI investigation is described below.
+
+## AI investigation (Gemini, read-only)
+AI investigation is **disabled by default**, even when a Gemini key and Redis credentials are present.
+Only the exact server-side setting `INVESTIGATE_ENABLED=1` enables the endpoint; missing, empty or other
+values keep it disabled. Disabled requests return `503` with error kind `disabled` before reading the body,
+reserving Redis quota or creating a Gemini client. The UI displays the disabled state without a Retry button.
+
+When explicitly enabled, **Investigate with AI** on `/timeline` sends the events currently shown (after filters) to
+`POST /api/investigate`, which asks Google Gemini for a structured investigation: summary, observed facts,
+hypotheses (confidence low/medium/high, supporting events, reasoning, missing evidence), recommended read-only
+checks and limitations. It never runs commands and never changes repositories or devices.
+
+### How it stays grounded
+- Requests are validated with Zod (`OpsEvent` schema, max 200 events, max 512 KiB, JSON only).
+  When an `Origin` header is present, its host must match the forwarded host or Host header; requests without
+  `Origin` are allowed. This is a browser cross-site mitigation, not authentication or a full-origin check.
+- Gemini uses structured JSON output; the response is re-validated with Zod and **every referenced event id
+  (and any id-shaped text such as `sim-0001` or `github:owner/repo:commit:sha`) must belong to the submitted events**.
+  Otherwise the response is discarded and an error is shown. There is no fake or fallback analysis.
+- Each event is labelled `real_github` or `simulated_iot` and sent with its **original** timestamp. Demo Time
+  Alignment is only a display option and is never sent as evidence.
+- Event text (commit messages, titles, payloads) is untrusted: it is passed as escaped, size-bounded data inside a
+  delimited block, and the instructions live only in the server-side system prompt (`lib/investigation/prompt.ts`).
+- Secrets, prompts and model configuration stay on the server. Diagnostics log only the HTTP status,
+  fixed error category, elapsed time, attempts, model id and event count—never keys or event content.
+
+### Configuration
+| Variable | Required | Purpose |
+| --- | --- | --- |
+| `INVESTIGATE_ENABLED` | explicit opt-in | Server-only feature gate; only `1` enables investigation. Default is disabled. Never use a `NEXT_PUBLIC_` prefix. |
+| `GEMINI_API_KEY` | when enabled | Server-only Gemini API key (create one in [Google AI Studio](https://aistudio.google.com/apikey)). |
+| `GEMINI_MODEL` | no | Model id, default `gemini-2.5-flash`. Must match `gemini-*`; must support structured JSON output. |
+| `GEMINI_TIMEOUT_MS` | no | Total upstream deadline, default `25000` (max `55000`; the route allows 60 seconds). |
+| `UPSTASH_REDIS_REST_URL` | Vercel Preview/Production when enabled | HTTPS REST endpoint of an Upstash Redis database. |
+| `UPSTASH_REDIS_REST_TOKEN` | Vercel Preview/Production when enabled | Server-only REST token for that database. |
+| `INVESTIGATE_LOCAL_DEV_BYPASS` | local only | Set to `1` to run locally without Redis. Production ignores it. |
+
+- **Local:** `cp .env.example .env.local` keeps AI disabled. To intentionally enable live local investigation after approving provider usage, set `INVESTIGATE_ENABLED=1`, `GEMINI_API_KEY` and either both Upstash values or `INVESTIGATE_LOCAL_DEV_BYPASS=1`, then restart `pnpm dev`. The local bypass uses a per-process limiter only and never overrides the feature gate. `.env.local` is git-ignored.
+- **Vercel:** Keep `INVESTIGATE_ENABLED` absent or `0` until access, provider verification and cost exposure are approved. Before enabling, configure `GEMINI_API_KEY`, `UPSTASH_REDIS_REST_URL`, and `UPSTASH_REDIS_REST_TOKEN` as server-only variables in the intended environment. Use separate Redis databases for Production and Preview so previews cannot consume production allowance; both Vercel targets run with `NODE_ENV=production` and ignore the local bypass. Store credentials as Secret/Sensitive, with no `NEXT_PUBLIC_` prefix. Changing variables takes effect in a new deployment; setting the gate to `1` is a separate activation decision, not a consequence of adding credentials.
+- With the gate enabled but no key, the UI shows a "not set up" state and the endpoint returns `503`. Missing Redis configuration or an unavailable quota service also fails closed with `503`.
+- To disable AI, remove the opt-in or set it to `0` and deploy that configuration through the approved release process. Existing deployments keep their prior configuration until replaced or retired; the gate does not revoke an already-started provider request.
+- CI and `pnpm test` use mocked Gemini/Redis responses and need no live credentials. The flag is an operational gate, not user authentication, proof of Gemini compatibility, or a monetary spending cap.
+
+### Quota and spending controls
+The server reserves a request in Upstash Redis before calling Gemini. One atomic Redis script enforces 100 requests globally per UTC day, 5 per client per minute, 15 per client per UTC day, and 3 concurrent Gemini calls globally. Denials return 429 and `Retry-After`. Redis uses its own clock. A failed Gemini call still spends one request allowance; up to three Gemini attempts may occur within one accepted request. Input is capped at 512 KiB/200 events, the prompt at 256 KiB, output at 8192 tokens, and the upstream deadline at 55 seconds. These are **request allowances, not a guaranteed cost cap**.
+
+On direct Vercel deployments, the app uses the platform-supplied `X-Forwarded-For` address for client buckets. Do not place an untrusted proxy in front of Vercel without reviewing its forwarded-header behavior. Missing or ambiguous addresses use one shared anonymous bucket; the global allowance always applies. Origin checks only reduce cross-site browser requests and are not authentication. Anonymous visitors can still share an IP, rotate addresses, or make direct requests. Use Google AI Studio/Cloud project quotas and billing alerts appropriate to the demo; billing alerts do not enforce a hard spending cap. If a provider hard cap is unavailable, remaining spend risk is bounded only by request allowances, token/deadline limits, and provider quota. Upstash REST calls add one reservation and one lease release per accepted request; monitor Redis availability and quota usage. No paid Upstash resource is created by this code.
 
 ## Gemini diagnostics (manual, no API endpoint)
+
+These scripts call providers directly and are **not** controlled by `INVESTIGATE_ENABLED`. Every live
+diagnostic run still requires separate explicit authorization for its target, model, request count and cost.
 
 For the separately approved immutable PR7 verification workflow and its dispatch,
 environment and cost prerequisites, see [PR7 verification preparation](docs/PR7_VERIFICATION.md).
@@ -104,4 +154,13 @@ A manual GitHub Actions workflow runs three live Gemini probes so API problems (
 
 Each line reports `httpStatus`, `category`, `schemaKeywords` and `undocumentedKeywords` (keywords the installed `@google/genai` `responseJsonSchema` docs do not list as supported; currently `minLength` and `maxLength`, used only by D). For HTTP 400 it adds `errorDetails` from a strict allowlist: the Google error `status` enum, `reason` enums, `fieldViolations` field paths and which schema keyword names the message mentions. Raw errors, messages, headers, prompts, model output and the key are never printed. Reading it: if A passes, B passes, C passes and D fails, the extra constraints in D (`minLength`/`maxLength` are the prime suspects, then `description` text and the `minItems`/`maxItems` bounds) are plausible causes; if B or C fail too, the structure (nested arrays of objects, `enum`) or `responseJsonSchema` itself for that model is implicated. These are hypotheses until a live run confirms them. Reading F/G (both start from passing C, no `minLength`/`maxLength`): F fails → `description` triggers the 400; G fails → `minItems`/`maxItems` trigger it; both fail → either alone is enough; both pass → neither keyword alone is the cause (look at combinations or the sizes/interaction in D/E).
 
-**Relation to the production investigation request (PR #7):** the schema (`investigationResponseJsonSchema`), system instruction and user prompt are verbatim copies in `scripts/gemini-diagnostics-contract.ts`, so they must be kept in sync until the feature lands. Differences: the diagnostics default to `gemini-3.8-flash` while PR #7's app default is `gemini-2.5-flash` (the model is never changed silently; pass `model` to match); events come from the simulator rather than user selection, with Demo Time Alignment off; there is no request validation, rate limiting or evidence-id check; one attempt only (no retries); the timeout is configurable up to 55 s versus 25 s in the app; and output is only validated against the result schema.
+**Relation to the application investigation request:** diagnostics retain the historical full schema
+(`investigationResponseJsonSchema`) in `scripts/gemini-diagnostics-contract.ts`; the application sends
+`investigationProviderResponseJsonSchema`, a separate reduced schema, then applies local Zod and evidence-ID
+checks. Diagnostics therefore do not certify reduced-schema acceptance. See
+[Gemini schema compatibility](docs/GEMINI_SCHEMA_COMPATIBILITY.md). Diagnostics default to
+`gemini-3.8-flash`, while the app defaults to `gemini-2.5-flash`; confirm the actual model explicitly.
+Diagnostics use simulator events with Demo Time Alignment off, skip application request validation,
+the feature gate, quotas and evidence-ID checks, and make one attempt per probe. Their timeout is
+configurable up to 55 seconds versus the app's default 25 seconds. The reviewed verification workflow
+still pins the historical PR7 SHA; it cannot certify this integration without a separately reviewed path.

@@ -1,0 +1,258 @@
+"use client";
+
+import { AlertTriangle, Loader2, RotateCcw, ShieldAlert, Sparkles } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Badge } from "@/components/ui/badge";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import type { OpsEvent } from "@/lib/events";
+import { INVESTIGATION_DISCLAIMERS, MAX_EVENTS, requestInvestigation } from "@/lib/investigation";
+import type { Confidence, InvestigationFailed, InvestigationReady } from "@/lib/investigation";
+import { captureInvestigationInput, isInvestigationStale } from "@/lib/investigation/stale";
+import { describeEvent, formatUtc } from "@/lib/timeline";
+import { cn } from "@/lib/utils";
+
+const confidenceStyles: Record<Confidence, string> = {
+  low: "border-slate-500/30 bg-slate-500/10 text-slate-700 dark:text-slate-300",
+  medium: "border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300",
+  high: "border-red-500/30 bg-red-500/10 text-red-700 dark:text-red-300",
+};
+
+const NON_RETRYABLE = new Set<InvestigationFailed["kind"]>(["disabled", "invalid_input", "payload_too_large", "forbidden"]);
+
+interface Run {
+  /** Events as submitted; evidence chips resolve against these even if the filters change later. */
+  submitted: OpsEvent[];
+  demoAlignment: boolean;
+  outcome: InvestigationReady | InvestigationFailed;
+}
+
+function EvidenceChips({ ids, events }: { ids: readonly string[]; events: ReadonlyMap<string, OpsEvent> }) {
+  return (
+    <ul className="flex flex-wrap gap-1.5" aria-label="Evidence events">
+      {ids.map((id) => {
+        const event = events.get(id);
+        if (!event) return null;
+        const simulated = event.source.simulated;
+        const description = describeEvent(event);
+        return (
+          <li key={id} className="max-w-full">
+            <button
+              type="button"
+              title={`${id} · ${formatUtc(event.timestamp)}`}
+              onClick={() => document.getElementById(`timeline-event-${id}`)?.scrollIntoView({ behavior: "smooth", block: "center" })}
+              className={cn(
+                "flex max-w-full items-center gap-1.5 rounded-md border px-2 py-1 text-left text-xs hover:bg-muted",
+                simulated ? "border-violet-500/30" : "border-emerald-500/30",
+              )}
+            >
+              <span className={cn("shrink-0 font-semibold", simulated ? "text-violet-700 dark:text-violet-300" : "text-emerald-700 dark:text-emerald-300")}>
+                {simulated ? "SIMULATED" : "GITHUB"}
+              </span>
+              <span className="truncate">{description.title}</span>
+            </button>
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
+
+function List({ title, items }: { title: string; items: readonly string[] }) {
+  return (
+    <section className="space-y-1">
+      <h3 className="text-sm font-semibold">{title}</h3>
+      {items.length === 0 ? (
+        <p className="text-sm text-muted-foreground">None reported.</p>
+      ) : (
+        <ul className="list-disc space-y-1 pl-5 text-sm break-words">
+          {items.map((item, i) => <li key={i}>{item}</li>)}
+        </ul>
+      )}
+    </section>
+  );
+}
+
+function ErrorState({ outcome, onRetry }: { outcome: InvestigationFailed; onRetry: () => void }) {
+  const missingKey = outcome.kind === "not_configured";
+  return (
+    <div role="alert" className="space-y-2 rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-sm">
+      <p className="flex items-center gap-2 font-medium">
+        <AlertTriangle className="size-4" aria-hidden="true" />
+        {outcome.kind === "disabled" ? "AI investigation is disabled" : missingKey ? "AI investigation is not set up" : "Investigation failed"}
+      </p>
+      <p className="break-words">{outcome.message}</p>
+      {missingKey && (
+        <p className="text-muted-foreground">
+          Set <code>GEMINI_API_KEY</code> in <code>.env.local</code> (or the Vercel project settings) and restart. No analysis is
+          generated without it.
+        </p>
+      )}
+      {outcome.retryAfterSeconds !== undefined && <p className="text-muted-foreground">Retry in about {outcome.retryAfterSeconds}s.</p>}
+      {!NON_RETRYABLE.has(outcome.kind) && (
+        <button type="button" onClick={onRetry} className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-card px-3 py-1.5 font-medium hover:bg-muted">
+          <RotateCcw className="size-4" aria-hidden="true" /> Retry
+        </button>
+      )}
+    </div>
+  );
+}
+
+function Result({ run, ready, stale }: { run: Run; ready: InvestigationReady; stale: boolean }) {
+  const { result, meta } = ready.data;
+  const events = useMemo(() => new Map(run.submitted.map((event) => [event.id, event])), [run.submitted]);
+  return (
+    <div className="space-y-5">
+      {stale && (
+        <p role="status" className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-2 text-sm">
+          The timeline inputs changed after this analysis. It only covers the {meta.eventCount} event(s) and Demo Time Alignment setting that were submitted.
+        </p>
+      )}
+      <p className="text-xs text-muted-foreground">
+        AI-generated by {meta.model} from {meta.eventCount} event(s) at {formatUtc(meta.generatedAt)}. Evidence ids were checked against the submitted events.
+      </p>
+
+      <section className="space-y-1">
+        <h3 className="text-sm font-semibold">Summary</h3>
+        <p className="text-sm break-words">{result.summary}</p>
+      </section>
+
+      <section className="space-y-2">
+        <h3 className="text-sm font-semibold">Observed facts</h3>
+        {result.observedFacts.length === 0 ? (
+          <p className="text-sm text-muted-foreground">None reported.</p>
+        ) : (
+          <ul className="space-y-3">
+            {result.observedFacts.map((fact, i) => (
+              <li key={i} className="space-y-1.5 text-sm">
+                <p className="break-words">{fact.statement}</p>
+                <EvidenceChips ids={fact.eventIds} events={events} />
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+
+      <section className="space-y-2">
+        <h3 className="text-sm font-semibold">Hypotheses (unconfirmed)</h3>
+        {result.hypotheses.length === 0 ? (
+          <p className="text-sm text-muted-foreground">The model did not find enough evidence to propose a hypothesis.</p>
+        ) : (
+          <ul className="space-y-3">
+            {result.hypotheses.map((h, i) => (
+              <li key={i} className="space-y-2 rounded-lg border border-border p-3">
+                <div className="flex flex-wrap items-center gap-2">
+                  <p className="text-sm font-medium break-words">{h.title}</p>
+                  <Badge className={confidenceStyles[h.confidence]}>{h.confidence} confidence</Badge>
+                  <Badge className="border-border text-muted-foreground">not a confirmed root cause</Badge>
+                </div>
+                <p className="text-sm break-words">{h.reasoning}</p>
+                <div className="space-y-1">
+                  <p className="text-xs font-medium text-muted-foreground">Supporting events</p>
+                  <EvidenceChips ids={h.supportingEventIds} events={events} />
+                </div>
+                {h.missingEvidence.length > 0 && (
+                  <div className="space-y-1">
+                    <p className="text-xs font-medium text-muted-foreground">Missing evidence</p>
+                    <ul className="list-disc space-y-0.5 pl-5 text-sm break-words">
+                      {h.missingEvidence.map((item, j) => <li key={j}>{item}</li>)}
+                    </ul>
+                  </div>
+                )}
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+
+      <List title="Recommended next checks (read-only)" items={result.recommendedNextChecks} />
+      <List title="Limitations" items={result.limitations} />
+    </div>
+  );
+}
+
+export function InvestigationPanel({ events, demoAlignment }: { events: readonly OpsEvent[]; demoAlignment: boolean }) {
+  const [pending, setPending] = useState(false);
+  const [run, setRun] = useState<Run | null>(null);
+  const controller = useRef<AbortController | null>(null);
+
+  useEffect(() => () => controller.current?.abort(), []);
+
+  const counts = useMemo(() => {
+    const simulated = events.filter((e) => e.source.simulated).length;
+    return { simulated, github: events.filter((e) => e.source.provider === "github").length };
+  }, [events]);
+  const tooMany = events.length > MAX_EVENTS;
+  const disabled = pending || events.length === 0 || tooMany;
+
+  async function start() {
+    if (disabled) return;
+    controller.current?.abort();
+    const next = new AbortController();
+    controller.current = next;
+    const submittedInput = captureInvestigationInput(events, demoAlignment);
+    setPending(true);
+    try {
+      const outcome = await requestInvestigation(submittedInput.events, { demoAlignment: submittedInput.demoAlignment, signal: next.signal });
+      setRun({ submitted: submittedInput.events, demoAlignment: submittedInput.demoAlignment, outcome });
+    } catch {
+      return; // aborted by a newer request or unmount
+    }
+    setPending(false);
+  }
+
+  const stale =
+    run?.outcome.status === "ready" &&
+    isInvestigationStale(
+      { events: run.submitted, demoAlignment: run.demoAlignment },
+      { events, demoAlignment },
+    );
+
+  return (
+    <Card>
+      <CardHeader className="flex flex-wrap items-center gap-2">
+        <CardTitle>AI investigation</CardTitle>
+        <Badge className="border-indigo-500/30 bg-indigo-500/10 text-indigo-700 dark:text-indigo-300">AI-generated · read-only</Badge>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="space-y-1 rounded-lg border border-border bg-muted/40 p-3 text-xs text-muted-foreground">
+          <p className="flex items-center gap-1.5 font-medium text-foreground">
+            <ShieldAlert className="size-4" aria-hidden="true" /> Please read
+          </p>
+          <ul className="list-disc space-y-0.5 pl-5">
+            {INVESTIGATION_DISCLAIMERS.map((text) => <li key={text}>{text}</li>)}
+          </ul>
+        </div>
+
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+          <button
+            type="button"
+            onClick={() => void start()}
+            disabled={disabled}
+            className="inline-flex items-center justify-center gap-2 rounded-lg border border-border bg-card px-3 py-2 text-sm font-medium hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {pending ? <Loader2 className="size-4 animate-spin" aria-hidden="true" /> : <Sparkles className="size-4" aria-hidden="true" />}
+            Investigate with AI
+          </button>
+          <p className="text-xs text-muted-foreground">
+            Analyzes the {events.length} event(s) currently shown ({counts.simulated} simulated IoT · {counts.github} GitHub). They are sent to
+            Google Gemini through the OpsReplay server.
+          </p>
+        </div>
+
+        {events.length === 0 && <p className="text-sm text-muted-foreground">No events to investigate. Adjust the filters to select at least one event.</p>}
+        {tooMany && (
+          <p role="alert" className="text-sm text-amber-700 dark:text-amber-300">
+            At most {MAX_EVENTS} events can be analyzed at once. Narrow the filters to continue.
+          </p>
+        )}
+        {pending && (
+          <p role="status" className="flex items-center gap-2 text-sm text-muted-foreground">
+            <Loader2 className="size-4 animate-spin" aria-hidden="true" /> Analyzing the selected events… this can take up to 30 seconds.
+          </p>
+        )}
+        {!pending && run?.outcome.status === "error" && <ErrorState outcome={run.outcome} onRetry={() => void start()} />}
+        {!pending && run?.outcome.status === "ready" && <Result run={run} ready={run.outcome} stale={stale} />}
+      </CardContent>
+    </Card>
+  );
+}
