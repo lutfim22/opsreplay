@@ -1,115 +1,65 @@
-# OpsReplay — Hackathon Demo
+# OpsReplay — Visual Hackathon Demo
 
-Prepared: 28 October 2026.
+Solo project. Scenario first; narrative is in Presenter Notes.
 
-## 1. OpsReplay: one timeline for investigating device incidents
+## 1. The store is open. A device goes offline.
 
-**Our idea:** combine device records and software activity, then help people review them with AI that cites the evidence.
+An illustrative scenario for a small retail business
 
-**A device suddenly goes offline. What happened before it?**
+DEVICE OFFLINE · Where do I start? · Power? · Connection? · Software?
 
-For this hackathon, we combine **simulated IoT**, the **public GitHub API**, and **Gemini** in one prototype. The focus is investigation support, with a person making the decision.
+## 2. Two sources. One missing story.
 
-```mermaid
-flowchart LR
-  IoT["IoT · SIMULATED"] --> Timeline["Unified Timeline"]
-  GitHub["GitHub · PUBLIC API"] --> Timeline
-  Timeline --> Filter["Source / Severity"]
-  Filter --> Gemini["Gemini · AI"]
-  Gemini --> Evidence["Facts, hypotheses and evidence"]
-```
+Device records and software changes need context.
 
-## 2. Imagine a small IT team supporting a retail business.
+Device telemetry · 09:01:45   1850 W · 09:01:50   1720 W · 09:03:00   offline · GitHub activity · Commit · Pull request · Workflow run · ? · Real-world context: Square’s September 2023 outage disrupted seller services. [S5]
 
-The business uses connected devices in its operations. One day, a device is reported offline.
+## 3. Useful approaches already exist.
 
-The team needs to inspect device records and software changes. The records are in different places, while the people handling them are limited.
+A documentation-based comparison — not a performance benchmark.
 
-**Their question:** is the device faulty, is connectivity involved, or is there another change to check?
+01 · Manual review · Open each source · Build the sequence · 02 / S2 · PagerDuty · Recent Changes · Changes in incident context · 03 / S3 · Datadog · Bits Investigation · AI + operational context · My experiment: a small, inspectable workflow for device + software evidence.
 
-This is an illustrative small-to-medium-business scenario, not customer data or interview findings. No retail company is connected to the prototype.
+## 4. OpsReplay connects the investigation.
 
-## 3. Separate records make an incident harder to reconstruct.
+Bring records together. Select events. Check the evidence.
 
-| Question | Records to inspect |
-| --- | --- |
-| What symptoms did the device show? | Readings, status and event times |
-| What changed in the software? | Commits, pull requests and workflow activity |
-| What can we conclude? | Supporting evidence and missing information |
+IoT · SIMULATED · GitHub · PUBLIC API · Unified Timeline · Source / Severity · Gemini · Observed facts · Hypotheses (unconfirmed) · Evidence chips · Evidence supports review. The operator decides.
 
-A real example: Square reported a September 2023 outage that disrupted payment services for sellers. Its report shows how technical disruption can interrupt business operations. [S5]
+## 5. Built as a solo hackathon prototype.
 
-OpsReplay has not been tested on the Square case and has no payment integration. That case provides problem context, not proof that this prototype could resolve it.
+A working path, with clear module boundaries.
 
-## 4. Existing approaches already help with investigation.
+Simulator · Fixed event fixtures · GitHub adapter · Public repository activity · Timeline · Source / Severity · Gemini adapter · Structured response · Validation · Schema + evidence IDs · Quota · Feature gate + Redis
 
-| Approach | What it helps with |
-| --- | --- |
-| Reviewing records manually | People can read each source and reconstruct the sequence themselves |
-| PagerDuty Recent Changes [S2] | Brings recent changes into incident context |
-| Datadog Bits Investigation [S3] | Supports investigation with AI and operational context |
+## 6. Demo: replay one device going offline.
 
-We do not claim a new category or superiority over these products. In this hackathon, we test a small investigation flow connecting device and software evidence, with visible sources and boundaries.
+Recorded successful request · Source: IoT · Severity: Critical
 
-This comparison uses official documentation, not hands-on competitor testing.
+SIMULATED · sim-plug-01  /  230 V · 1850 W · 09:01:45 UTC · 1720 W · 09:01:50 UTC · offline · 09:03:00 UTC · 3 SIMULATED EVENTS · 0 GITHUB EVENTS · Demo Time Alignment: OFF
 
-## 5. Our approach: combine, focus, then check.
+## 7. The saved AI result is inspectable.
 
-1. **Unified Timeline:** view device events alongside public GitHub activity.
-2. **Source / Severity:** narrow the events to inspect.
-3. **Investigate with AI:** request a summary and possible explanations.
-4. **Evidence chips:** return to the records behind the answer.
+Protected Preview · recorded result · no new live request
 
-The timeline provides context. Filters define the input. Evidence references make the answer reviewable. Events close in time do not automatically establish causation.
+3 · events · 1 · attempt · 1.623 s · provider stage · Hypotheses (unconfirmed) · Device failure or loss of connectivity · low confidence · not a confirmed root cause · Evidence IDs checked against the submitted events. · One observed result; not a latency benchmark.
 
-## 6. What we implemented for this hackathon.
+## 8. A prototype with visible boundaries.
 
-| Part | Prototype implementation |
-| --- | --- |
-| IoT | A deterministic smart-plug simulator with readings and offline/online events |
-| Public API | Read-only commits, PRs and workflows from a public GitHub repository |
-| Interface | Unified Timeline, Source labels, Severity filters and original timestamps |
-| AI | Gemini returns Observed facts and Hypotheses (unconfirmed) with event references |
-| Checks | Server-side response/evidence-ID validation, a feature gate and Redis quota |
+Evidence references are useful. They do not prove the root cause.
 
-Device input is simulated. Physical hardware adapters, app user accounts, multi-site inventory and automatic remediation are not implemented. The successful live AI test used a protected Preview.
+CURRENT · IoT · SIMULATED · AI verification · One IoT-only request · Access · Protected Preview · NOT YET · Physical devices · Hardware adapter · Broader evaluation · Mixed-source cases · Public AI · Access + cost controls
 
-## 7. Demo scenario: one device, three important events.
+## 9. Next: strengthen the evidence, then the view.
 
-**Setup:** Source = IoT · Severity = Critical · Demo Time Alignment = OFF.
+Small modules make the next experiment easier to change.
 
-All visible events after filtering become the AI input. Here, the input contains two power readings and an offline status from sim-plug-01.
+01 · Real data · Hardware adapter · 02 · Replay cases · Expected facts + evidence · 03 · Optional 3D · Device location + status · OpsReplay: reconstruct the story. Check the evidence. · Future direction · 3D is not implemented
 
-**Investigation question:** what do these three records show, what explanations remain possible, and what evidence is missing?
+## Sources
 
-This is the SIMULATED input used in the completed successful UI test. It contained no GitHub events. GitHub integration is present in the timeline, but this run did not verify mixed-source AI behavior.
+- [S2 · PagerDuty — Recent Changes](https://docs.pagerduty.com/ai-automation/aiops/recent-changes)
+- [S3 · Datadog — Bits Investigation](https://www.datadoghq.com/blog/bits-ai-sre/)
+- [S5 · Square — September 2023 incident summary](https://developer.squareup.com/blog/incident-summary-2023-09-07/)
 
-## 8. Test result: a displayed answer with traceable references.
-
-**Observed facts:** two power readings and an offline status, with SIMULATED evidence chips.
-
-**Hypotheses (unconfirmed):** Device failure or loss of connectivity — **low confidence**, **not a confirmed root cause**.
-
-| Evidence from one completed request | Result |
-| --- | --- |
-| Input / outcome | 3 simulated events / result successfully displayed |
-| Provider | HTTP 200 / 1 attempt |
-| Gemini stage | 1.623 s; not total browser latency or a benchmark average |
-
-The owner's screenshot and deployment log support this one working path. Valid event references do not automatically make the interpretation correct or prove the cause.
-
-## 9. What have we shown, and what remains open?
-
-**Demonstrated:** simulated events → filters → AI → a result with event references worked for one bounded scenario. Public GitHub activity can appear in the same timeline.
-
-**Not established:** real-device integration, diagnosis across many cases, reduced incident-resolution time or superiority over other products. Production AI remains OFF.
-
-**Next:** a real-device adapter, same-case evaluation across manual/timeline/AI, and recorded incidents that can be replayed. A 3D map is an option after site/device data exists; it is not a current website feature.
-
-**What we want to demonstrate:** separate records can become one investigation flow that a person can inspect.
-
-## Sources — checked 28 October 2026
-
-- [S2 · PagerDuty — Recent Changes](https://docs.pagerduty.com/ai-automation/aiops/recent-changes) — Documented change-event context; not a hands-on comparison.
-- [S3 · Datadog — Bits Investigation](https://www.datadoghq.com/blog/bits-ai-sre/) — Vendor description of AI-assisted investigation; no competitive performance result.
-- [S5 · Square Engineering — Incident Summary: 2023-09-07](https://developer.squareup.com/blog/incident-summary-2023-09-07/) — Published 15 September 2023. A real service outage affecting sellers; not an OpsReplay case or proof that fragmented records caused the outage.
+The public repository deck shows a text summary. The original owner screenshot remains in the local downloadable demo bundle and is not published here.
