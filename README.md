@@ -4,6 +4,16 @@ AI-powered Incident Investigation.
 
 Built with Next.js (App Router), TypeScript, Tailwind CSS, shadcn/ui and pnpm.
 
+## Demo and technical documentation
+
+- [Visual Demo](docs/HACKATHON_DEMO.html) / [transcript](docs/HACKATHON_DEMO.md) / [editable PowerPoint](docs/HACKATHON_DEMO.pptx): English audience material, without team-size branding. The verified story is IoT-only; GitHub is an additional adapter without a mapped device dependency. Offline navigation supports buttons, a selector, keyboard and swipe.
+- [Presenter reference](docs/PRESENTER_NOTES.md) / [printable HTML](docs/PRESENTER_NOTES.html): English repository reference. The local download bundle contains matching Indonesian narration and Indonesian PPTX speaker notes, not a second set of Indonesian audience slides.
+- [Data-source options](docs/DATA_SOURCE_OPTIONS.md): researched alternatives and required scope; no replacement API is integrated by this documentation change.
+- [Technical Handbook](docs/TECHNICAL_GUIDE.md) / [printable HTML](docs/TECHNICAL_GUIDE.html): implementation, contracts, operations, verification and open release work.
+- [Business Product Brief](docs/PRODUCT_BRIEF.md) / [printable HTML](docs/PRODUCT_BRIEF.html): a separate earlier business reference, outside the current audience deck.
+
+The public demo summarizes saved evidence from a completed protected Preview request: three simulated IoT events, no GitHub events. The original screenshot stays in the local bundle. Documents make no remote asset or AI requests. Public Production AI remains OFF.
+
 ## Getting started
 
 ```bash
@@ -33,7 +43,7 @@ distinct from **SIMULATED** IoT data. Data comes from the server-side Route Hand
   Public repositories work without it. Set it in `.env.local`.
 
 ### Limitations
-- Unauthenticated GitHub API limit is 60 requests/hour per IP; each load uses 3 requests. Rate limits are shown in the UI.
+- Unauthenticated GitHub API limit is 60 requests/hour per IP; a complete load normally uses 4 upstream requests (repository metadata plus 3 activity collections). Rate limits are shown in the UI.
 - Private, missing or inaccessible repositories return a "not found" state; no mock data is substituted on failure.
 - Only the latest 30 commits, PRs and workflow runs are fetched; no pagination, no webhooks, no OAuth, no storage.
 - If Actions is disabled, commits and PRs are still shown with a warning.
