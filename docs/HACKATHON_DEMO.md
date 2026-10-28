@@ -1,92 +1,113 @@
-# OpsReplay — Demo Deck
+# OpsReplay — Pilot Pitch
 
-Prepared: October 28, 2026.
+Prepared: 28 October 2026. Proposed retail pilot; not a production offer.
 
-## 1. The incident is visible. The context is scattered.
+![AI-generated future concept, not a live app or customer site](assets/opsreplay-3d-concept.jpg)
 
-## OpsReplay
+## 1. A branch device stops working. Where do you look first?
 
-An evidence timeline for investigating device incidents alongside software activity.
+OpsReplay brings device records and software activity into one timeline, so a team can check the evidence before deciding what to do.
 
-**For operations teams managing connected devices and the software around them.** A device can go offline while its readings, repository changes and workflow activity sit in separate views. Before taking action, an operator needs a defensible picture of what the records actually show.
+**Proposed first use case:** teams supporting devices across retail branches.
 
-OpsReplay brings these records into one view, preserves their sources, and adds optional AI investigation with evidence references.
+Current stage: working prototype with simulated device data. The multi-branch scene is a future concept, not a live customer system.
 
-**One guiding question:** What happened in our records, and what should we check next?
+## 2. A software problem can become an operations problem.
 
-## 2. Three investigation problems, three concrete responses
+**8.5 million Windows devices**
 
-| Investigation problem | What we built | Practical value |
-| --- | --- | --- |
-| Device and software records are separated | Unified Timeline combining simulated IoT and public GitHub activity | Compare the available records in one view |
-| Too much information obscures the incident window | Source and Severity filters with original timestamps | Narrow the evidence the operator wants to inspect |
-| An explanation is hard to trust without a basis | Observed facts, Hypotheses (unconfirmed), evidence chips and explicit uncertainty | Trace an answer to input and see what remains unproven |
+Microsoft's estimate of devices affected by the 2024 CrowdStrike update incident. [S1]
 
-This is support for investigation, not an automatic diagnosis. The prototype makes context and traceability inspectable; faster incident resolution is an intended benefit, not a measured result.
+For a team running connected equipment, an outage can mean interrupted work and time spent checking several systems. This is why the evidence matters.
 
-## 3. A workflow that keeps the operator in control
+The historical incident shows the scale of software-to-device risk. It does not show that OpsReplay could have prevented or resolved it.
 
-## Inspect → Focus → Investigate → Verify
+## 3. Useful tools already exist. We should learn from them.
 
-1. **Unified Timeline:** compare source-labelled device and software records.
-2. **Source / Severity:** narrow the visible event set instead of copying scattered records manually.
-3. **Investigate with AI:** explicitly request an explanation of that input.
-4. **Evidence chips:** check the cited events and distinguish facts from possible explanations.
-
-**Why these features belong together:** a timeline provides context, filters define scope, and citations let the operator challenge the AI's answer. Removing any one of those weakens the investigation story.
-
-The public API integration reads GitHub commits, pull requests and workflow activity. The device input is a deterministic IoT simulator. Both keep provenance; a nearby software event is not automatically the cause of a device symptom.
-
-## 4. A concrete incident, not a generic chat prompt
-
-## Start with the device evidence
-
-| Original simulator time (UTC) | Observed record |
+| Approach | What it helps with |
 | --- | --- |
-| 09:01:45 | sim-plug-01: 1850 W / 230 V |
-| 09:01:50 | sim-plug-01: 1720 W / 230 V |
-| 09:03:00 | sim-plug-01 went offline |
+| PagerDuty Recent Changes [S2] | Brings recent service changes into incident triage |
+| Datadog Bits Investigation [S3] | Uses operational context to investigate issues with AI |
+| OpsReplay prototype | Combines simulated device events and public GitHub activity, with a small, inspectable AI workflow |
 
-**Operator question:** What do these records show, which explanations are still possible, and what evidence would help distinguish them?
+Our proposed focus is a clear device-to-software investigation flow for a small pilot. Customer fit is still to be tested; we have not proved a price or performance advantage.
 
-The completed AI run used these three SIMULATED events. The wider product can display public GitHub activity alongside device records, but this run contained zero GitHub events. We have not demonstrated that a software change caused this offline event.
+## 4. Put the records together. Make the answer checkable.
 
-Demo Time Alignment is display-only. Original evidence timestamps are preserved.
+1. **Unified Timeline:** see device records and public software activity together.
+2. **Source / Severity:** choose the events to inspect.
+3. **Investigate with AI:** ask for a summary and possible explanations.
+4. **Evidence chips:** return to the records behind the answer.
 
-## 5. A result you can inspect and challenge
+The operator stays in control. A nearby software change is a clue to inspect, not automatic proof of the cause.
 
-## Observed facts
+## 5. The core workflow has worked in a protected demo.
 
-The result restated the two power readings and offline status, each with a SIMULATED evidence reference.
-
-## Hypotheses (unconfirmed)
-
-**Device failure or loss of connectivity** — low confidence; not a confirmed root cause.
-
-The operator can follow the references and ask what evidence is missing. A valid reference does not make the model's wording or interpretation automatically correct.
-
-| Completed protected Preview request | Observed result |
+| Completed test | Observed result |
 | --- | --- |
-| Model / input | gemini-3.5-flash-lite / 3 simulated events |
-| Provider response / attempts | HTTP 200 / 1 attempt |
-| Gemini stage | 1.623 s; not total browser latency |
+| Input | 3 SIMULATED device events: two power readings and an offline status |
+| AI response | HTTP 200; 1 provider attempt |
+| Gemini stage | 1.623 s for this one request |
 
-Owner screenshot and deployment-scoped logs support this completed happy path. This presentation uses that recorded result.
+The UI showed **Observed facts**, **Hypotheses (unconfirmed)** and event references. The displayed hypothesis had **low confidence** and was **not a confirmed root cause**.
 
-## 6. From scattered signals to a reviewable investigation
+This test contained no GitHub events. It proves one working path, not fleet readiness, diagnostic accuracy or faster incident resolution.
 
-## What the prototype demonstrates
+## 6. Start with one small pilot, using the customer's problem.
 
-- One place to inspect simulated device records and public software activity.
-- An operator-controlled investigation scope defined by the current filters.
-- AI findings that distinguish facts from hypotheses and point back to submitted events.
-- Clear simulation labels and uncertainty, instead of an unsupported causal story.
+**Example to discuss:** a branch reports an offline device after a software change. The cause could be software, connectivity, power, or something else.
 
-## What comes next
+For a pilot, agree on one device type, one approved data source, one software-change source, and a small set of recorded cases.
 
-Physical-device adapters, stronger access controls and more deployed failure testing are future work. The prototype does not perform automatic remediation. Public Production AI remains OFF; the verified live result came from a protected Preview.
+Deliver a read-only investigation view and a report of what helped, what failed and what is still missing. Real devices, site inventory and deployment-to-device mapping are not connected in the current prototype.
 
-**OpsReplay's proposition:** help an operator move from “these signals are in different places” to “here is the evidence, here is what we know, and here is what we still need to check.”
+## 7. Measure usefulness before making bigger promises.
 
-No incident-resolution time reduction or accuracy percentage has been measured.
+Compare the **same cases** in three ways:
 
+| Baseline | Trial modes |
+| --- | --- |
+| Existing records viewed separately | Unified Timeline, then Unified Timeline with AI |
+
+Measure how long people take to find the relevant records, whether their facts match the input, and whether they make unsupported cause claims. Record AI latency, failed requests and cost separately.
+
+This is a proposed test, not a completed benchmark. No MTTR improvement, accuracy percentage or competitor speed advantage has been measured. [S4]
+
+## 8. Keep the approach adaptable.
+
+| Need | Current starting point / further work |
+| --- | --- |
+| Different device source | Add a mapper to the shared event format and test it |
+| Different alert rules | Change the rule module; check the thresholds with the operator |
+| Different AI setup | Gemini model is configurable; another provider needs a new adapter and validation |
+| Different business view | Add the site/device context and screens the customer needs |
+
+The parts are separated in code, but a new integration is not automatically plug-and-play. Scope and effort depend on the actual data and requirements.
+
+## 9. A 3D site map could help—when there are many locations.
+
+**Future concept:** select a branch, select a device, then open the same incident records.
+
+A 3D view should help people find the affected place, not just decorate the screen. Keep a simple list/timeline for phones and accessibility.
+
+First we need reliable site/device data. Then compare a 2D list with a 3D view on the same task. Build it into the website only if it helps people find the right device more easily.
+
+## 10. Next: agree on a pilot that can be checked.
+
+1. Choose the team, problem and data they are allowed to share.
+2. Agree on the cases and success criteria before the test.
+3. Connect only the sources needed for that pilot.
+4. Review the results together before deciding what to build next.
+
+**OpsReplay's promise at this stage:** a prototype to test a clearer investigation workflow—not a claim to replace an enterprise platform or automatically fix outages.
+
+Proposed next step: a discovery discussion and a scoped, read-only pilot. Price, schedule and service commitments require requirements review.
+
+
+
+### Sources — checked 28 October 2026
+
+- [S1 · Microsoft — Helping our customers through the CrowdStrike outage](https://blogs.microsoft.com/blog/2024/07/20/helping-our-customers-through-the-crowdstrike-outage/) — Published 20 July 2024; estimate of affected Windows devices, not an OpsReplay benchmark.
+- [S2 · PagerDuty — Recent Changes](https://docs.pagerduty.com/ai-automation/aiops/recent-changes) — Official product documentation on change events and correlation; no hands-on product trial.
+- [S3 · Datadog — Introducing Bits Investigation](https://www.datadoghq.com/blog/bits-ai-sre/) — Vendor description of AI investigation and evidence references; not an independent performance test.
+- [S4 · Datadog — Evaluation platform for autonomous SRE agents](https://www.datadoghq.com/blog/engineering/bits-ai-eval-platform/) — Engineering discussion of repeatable scenarios, ground truth and surrounding signals; informs the proposed evaluation design.

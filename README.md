@@ -4,15 +4,16 @@ AI-powered Incident Investigation.
 
 Built with Next.js (App Router), TypeScript, Tailwind CSS, shadcn/ui and pnpm.
 
-## Hackathon documentation
+## Hackathon and pilot documentation
 
 Choose the document for your audience:
 
-- [Demo Deck](docs/HACKATHON_DEMO.md) / [printable HTML](docs/HACKATHON_DEMO.html): the problem, how the implemented features address it, a concrete incident and demonstrated value. No speaker script or onboarding material.
-- [Presenter Notes](docs/PRESENTER_NOTES.md) / [printable HTML](docs/PRESENTER_NOTES.html): the 2–3-minute talk track, access/fallback preparation and Q&A.
-- [Technical Handbook](docs/TECHNICAL_GUIDE.md) / [printable HTML](docs/TECHNICAL_GUIDE.html): 18 chapters covering architecture, contracts, quotas, configuration, onboarding, diagnosis, evidence and release limitations.
+- [Pilot Pitch](docs/HACKATHON_DEMO.md) / [printable HTML](docs/HACKATHON_DEMO.html): simple buyer-facing problem, real-world context, existing approaches, the demonstrated prototype, a proposed pilot and labelled future 3D concept.
+- [Product Brief and Pilot Proposal](docs/PRODUCT_BRIEF.md) / [printable HTML](docs/PRODUCT_BRIEF.html): source-backed positioning, fair comparison, benchmark plan, adaptation points, 3D decision gates and pilot scope.
+- [Presenter Notes](docs/PRESENTER_NOTES.md) / [printable HTML](docs/PRESENTER_NOTES.html): three-minute talk track, evidence preparation and buyer Q&A.
+- [Technical Handbook](docs/TECHNICAL_GUIDE.md) / [printable HTML](docs/TECHNICAL_GUIDE.html): 18 chapters on implementation, contracts, operations, verification and open release work.
 
-HTML documents are self-contained: download/open them in a browser and print to PDF. They load no remote assets or AI requests. Public Production AI remains OFF; the verified AI result came from a protected Preview.
+Download/open HTML with its included local `docs/assets` image, or read the Markdown in GitHub. No remote image/font/script is loaded and no AI request is made by the documents. The 3D scene is an AI-generated future concept, not an implemented feature or real customer system. Public Production AI remains OFF.
 
 ## Getting started
 
