@@ -4,14 +4,15 @@ AI-powered Incident Investigation.
 
 Built with Next.js (App Router), TypeScript, Tailwind CSS, shadcn/ui and pnpm.
 
-## Hackathon documentation
+## Demo and technical documentation
 
-- [Visual Hackathon Demo](docs/HACKATHON_DEMO.html) / [text transcript](docs/HACKATHON_DEMO.md): scenario-first, nine visual slides for a solo project, with Previous/Next buttons, a slide picker, keyboard/swipe navigation, and optional study notes. The public deck uses a text summary; the owner screenshot remains in the local downloadable bundle. The HTML is self-contained and works offline.
-- [Study Guide and Presenter Notes](docs/PRESENTER_NOTES.md) / [printable HTML](docs/PRESENTER_NOTES.html): the separate narrative, three-minute timing, scope and evidence caveats. The [editable PowerPoint](docs/HACKATHON_DEMO.pptx) companion has native shapes and embedded speaker notes.
+- [Visual Demo](docs/HACKATHON_DEMO.html) / [transcript](docs/HACKATHON_DEMO.md) / [editable PowerPoint](docs/HACKATHON_DEMO.pptx): English audience material, without team-size branding. The verified story is IoT-only; GitHub is an additional adapter without a mapped device dependency. Offline navigation supports buttons, a selector, keyboard and swipe.
+- [Presenter reference](docs/PRESENTER_NOTES.md) / [printable HTML](docs/PRESENTER_NOTES.html): English repository reference. The local download bundle contains matching Indonesian narration and Indonesian PPTX speaker notes, not a second set of Indonesian audience slides.
+- [Data-source options](docs/DATA_SOURCE_OPTIONS.md): researched alternatives and required scope; no replacement API is integrated by this documentation change.
 - [Technical Handbook](docs/TECHNICAL_GUIDE.md) / [printable HTML](docs/TECHNICAL_GUIDE.html): implementation, contracts, operations, verification and open release work.
-- [Business Product Brief](docs/PRODUCT_BRIEF.md) / [printable HTML](docs/PRODUCT_BRIEF.html): retained pilot-proposal reference, separate from the hackathon demo. Its 3D art is a labelled future concept.
+- [Business Product Brief](docs/PRODUCT_BRIEF.md) / [printable HTML](docs/PRODUCT_BRIEF.html): a separate earlier business reference, outside the current audience deck.
 
-The public demo summarizes saved evidence from a completed protected Preview request, containing three simulated IoT events and no GitHub events. Public Production AI remains OFF. The documents make no remote asset or AI requests. The separate business-reference HTML uses its included local image.
+The public demo summarizes saved evidence from a completed protected Preview request: three simulated IoT events, no GitHub events. The original screenshot stays in the local bundle. Documents make no remote asset or AI requests. Public Production AI remains OFF.
 
 ## Getting started
 

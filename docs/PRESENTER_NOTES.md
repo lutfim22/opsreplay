@@ -1,96 +1,96 @@
 # OpsReplay — Study Guide & Speaker Notes
 
-Solo voice: I / my. Suggested delivery: around three minutes. Use the short Speaker script for delivery; the longer Study notes are reference material, not a three-minute script. Use recorded evidence, not a new live request.
+Suggested delivery: around three minutes. Use the short Speaker script for delivery; the longer Study notes are reference material, not a three-minute script. Use recorded evidence, not a new live request.
 
-## 1. Open with the incident, then introduce the idea
-
-### Speaker script
-
-Imagine a store that is open for business when a connected device goes offline. The person investigating needs to know what happened first: a power symptom, a connection issue, or a software change? That question led me to build OpsReplay.
-
-### Study notes
-
-Imagine a small store using connected devices in its operations. The store is open when one device goes offline. I want to know what happened before it stopped responding: was there a power symptom, a connection issue, or a software change worth checking? This is an illustrative scenario, not a customer deployment or interview result. I built this hackathon project solo. The implementation uses a smart-plug simulator, not connected retail hardware.
-
-## 2. The problem: reconstructing a sequence across sources
+## 1. The store is open. A device goes offline.
 
 ### Speaker script
 
-Device records show symptoms. Software activity shows changes. When those records are separate, a person has to reconstruct the sequence. Technical outages can disrupt real businesses; Square’s 2023 outage is one public example, although it is not an OpsReplay test case.
+Imagine a store that is open when a connected device goes offline. The person investigating needs to know what happened beforehand: a power symptom, a connection problem, or a device issue? OpsReplay helps reconstruct that sequence.
 
 ### Study notes
 
-Investigation requires reading device records and software activity. When those records are separate, a person has to reconstruct the sequence. The GitHub activity labels show record types the adapter can read; they are not evidence that a commit caused the offline event. As real-world context, Square reported a September 2023 outage affecting payment services for sellers [S5]. That illustrates operational impact. OpsReplay was not tested on that incident, and I do not claim fragmented records caused Square’s outage.
+The retail setting is illustrative, with no connected customer hardware. Do not present firmware, commits or weather as a cause without an established relationship.
 
-## 3. Existing approaches
+## 2. The offline alert is only the last clue.
 
 ### Speaker script
 
-Useful approaches already exist. We can review records manually. PagerDuty Recent Changes and Datadog Bits Investigation also help with incident context. My experiment is a small workflow bringing device and software evidence together. I have not benchmarked it against those products.
+The offline alert only shows the last known state. Here are two power readings before the device goes offline. We need the sequence, but events being close in time does not prove a cause. That is the investigation problem this prototype addresses.
 
 ### Study notes
 
-Manual investigation remains useful: open each source, read the records and reconstruct the sequence. PagerDuty Recent Changes puts changes into incident context [S2]. Datadog Bits Investigation describes AI-assisted investigation with operational context [S3]. The category already exists. My experiment is a small workflow for device and software evidence with visible provenance and limits. This is a functional comparison based on vendor documentation. I have not run a competitive benchmark, compared pricing, or demonstrated superiority.
+Power readings come from the original simulator fixture. The sequence is a fact about the simulated input; causation is unconfirmed.
 
-## 4. Explain the OpsReplay flow
+## 3. Useful approaches already exist.
 
 ### Speaker script
 
-OpsReplay brings events into a Unified Timeline. A user selects Source and Severity, then investigates with Gemini. The result separates Observed facts from Hypotheses and links back through Evidence chips. AI helps with review; the operator makes the decision.
+Records can be reviewed manually. PagerDuty adds recent-change context; Datadog offers AI-assisted investigation. OpsReplay explores a small workflow to replay device events and inspect the evidence behind an AI response. There is no competitive benchmark.
 
 ### Study notes
 
-OpsReplay brings SIMULATED IoT and public GitHub activity into a Unified Timeline. The user selects Source and Severity, then uses Investigate with AI on the displayed events. Gemini produces Observed facts and Hypotheses (unconfirmed), with Evidence chips referencing events. The server validates the output shape and evidence IDs. Temporal proximity and valid IDs do not establish causation; the operator still reviews the evidence. Derived timeline severity from anomaly rules also differs from the original event severity submitted to AI.
+The comparison uses vendor documentation [S2, S3], not hands-on tests, pricing analysis or evidence of superiority.
 
-## 5. What I implemented
+## 4. OpsReplay turns events into an investigation.
 
 ### Speaker script
 
-For this solo hackathon project, I built six parts: simulator, GitHub adapter, timeline, Gemini adapter, validation and quota. Separate modules give data-source and model changes a clear place to happen. The device data is still simulated.
+The verified path sends simulated IoT events into a Unified Timeline, filters them by Source and Severity, and investigates with Gemini. The response contains facts, hypotheses and Evidence chips. A GitHub adapter also exists, but software-to-device mapping is not implemented. GitHub does not explain this incident.
 
 ### Study notes
 
-I built the simulator, public GitHub adapter, timeline and filters, Gemini adapter, output validation, feature gate, and Redis quota. Source adapters separate data acquisition from a shared event format. The Gemini adapter separates provider calls from the view. These boundaries provide places to change data sources or model configuration; a new integration still needs implementation and testing. There is no physical-device adapter, application user account, persistent incident archive, multi-site inventory, or automatic remediation. Protected Preview uses Vercel deployment protection, not application authentication.
+GitHub reads public repository activity without device/deployment dependency mapping. It remains implemented in the app. This diagram shows the verified IoT subset and does not claim a new adapter is active.
 
-## 6. The bounded demo that was actually verified
+## 5. What the prototype implements.
 
 ### Speaker script
 
-The successful verified scenario contains three events from one device: 1850 watts, 1720 watts, then offline. This request used simulated IoT only, with no GitHub events. I am showing saved evidence so the demo needs no additional AI request.
+The prototype implements a simulator, GitHub adapter, timeline, Gemini adapter, validation and quota. Separate modules give new integrations a clear place to happen. GitHub is an additional capability, not a required explanation for every IoT scenario.
 
 ### Study notes
 
-Use saved evidence; do not submit another Investigate with AI request. The recorded successful test used Source IoT, Severity Critical and Demo Time Alignment OFF. Its three SIMULATED events from sim-plug-01 are 1850 W / 230 V at 09:01:45 UTC, 1720 W / 230 V at 09:01:50 UTC, then offline at 09:03:00 UTC; the fixture date is 1 January 2025. That AI request contained zero GitHub events. Public GitHub integration is implemented separately; a successful mixed-source AI request has not been demonstrated. Original power-event severity is info; the Critical filter uses derived timeline severity.
+The schema currently allows simulator, shelly and github providers, with powerW, voltageV, currentA and energyWh metrics. A shelly enum is not a physical adapter. A new public API requires implementation, contracts, provenance, validation, error handling and tests, not just a changed URL.
 
-## 7. Describe the result precisely
+## 6. Demo: replay one device going offline.
 
 ### Speaker script
 
-This is the original result. AI gives facts and a possible device or connection issue, marked low confidence. The cause remains unconfirmed. Evidence IDs were checked against the input. The 1.623-second value measures the provider stage for one request, not an application benchmark.
+The verified demo contains three simulated events: 1850 watts, 1720 watts, then offline. It uses Source IoT, Severity Critical and Demo Time Alignment OFF. There are no GitHub events in this request. This presentation uses saved evidence.
 
 ### Study notes
 
-The original screenshot shows a gemini-3.5-flash-lite response generated on 28 October 2026 at 01:11:40 UTC. It includes Observed facts and Hypotheses (unconfirmed), including Device failure or loss of connectivity with low confidence and not a confirmed root cause. The provider-adapter log records HTTP 200, one attempt, three events and durationMs 1623. The 1.623 s value measures the provider stage for one request, not full browser latency, an average, or a competitive benchmark. Evidence IDs were checked against the input; that does not prove every interpretation correct. Only the visible screenshot content was reviewed. It does not directly demonstrate Redis lease release.
+Event IDs are sim-0021, sim-0022 and sim-0036, at 09:01:45, 09:01:50 and 09:03:00 UTC. Fixture date: 1 January 2025; device: sim-plug-01; 230 V on both readings. The Critical filter uses derived timeline severity; original power-event severity is info. Do not make another AI request.
 
-## 8. Limits and access
+## 7. The saved AI result is inspectable.
 
 ### Speaker script
 
-The verified path is a bounded prototype in protected Preview. Real hardware, mixed-source evaluation and controls for public AI access remain future work. Evidence references make the response inspectable; they do not establish the root cause.
+The original result contains facts and a possible device or connection issue, with low confidence. The root cause remains unconfirmed. Evidence IDs were checked against the input. The 1.623-second value measures the provider stage for one request, not an application benchmark.
 
 ### Study notes
 
-This is a working, bounded investigation prototype, not an operations-ready product. The successful live AI test was in protected Preview. Public Production AI remains OFF. Broader access needs work on access boundaries, forwarded-IP trust, negative quota/outage/release verification, and wider evaluation cases. There is no measured time saving, ROI, root-cause accuracy, or customer-scale reliability result. Keep three labels explicit: SIMULATED, unconfirmed and prototype.
+The gemini-3.5-flash-lite response was generated on 28 October 2026 at 01:11:40 UTC. Provider-stage log: HTTP 200, attempts 1, eventCount 3, durationMs 1623. Evidence-ID membership is not semantic truth validation. Only visible screenshot content was reviewed; it does not directly demonstrate Redis release.
 
-## 9. Next steps and the role of 3D
+## 8. A prototype with visible boundaries.
 
 ### Speaker script
 
-Next, connect real data and evaluate replay cases with expected results. An optional 3D view could later help locate devices and inspect their status. The purpose stays simple: reconstruct the sequence, check the evidence, then decide what to do.
+The verified path is simulated IoT and one successful AI request in protected Preview. Physical hardware and mapped external context remain future work. Broader public AI access also needs additional access and cost controls.
 
 ### Study notes
 
-First connect one real data source through a hardware adapter and test the event contract. Then create replay cases with expected facts and evidence for consistent evaluation. An optional 3D view could show device location and status if it helps users investigate. That is a future direction, not an implemented application feature or digital twin. Close with: OpsReplay helps understand what happened before guessing why.
+Public Production AI remains OFF. Application accounts, persistent incident archives and automatic remediation are not implemented. No customer reliability or ROI is measured. Protected Preview uses deployment protection, not application authentication.
+
+## 9. Next: connect the right operational context.
+
+### Speaker script
+
+Next choose context that fits the incident. For an offline device, cloud-service status can help if the device depends on that service. Implement the adapter and dependency mapping, then evaluate replay cases. Real hardware and optional 3D can follow when useful.
+
+### Study notes
+
+Particle Status API is the researched recommendation for an offline scenario, conditional on device-to-service/component mapping. The current simulator has no Particle dependency. Provider-reported status does not prove a device or local-network failure. ThingSpeak is better for actual IoT telemetry; Open-Meteo fits cooling/energy scenarios with suitable sensors and matching time/location. No new adapter is implemented in this documentation revision.
 
 ## Timing
 
@@ -100,6 +100,5 @@ First connect one real data source through a hardware adapter and test the event
 
 - [S2 · PagerDuty — Recent Changes](https://docs.pagerduty.com/ai-automation/aiops/recent-changes)
 - [S3 · Datadog — Bits Investigation](https://www.datadoghq.com/blog/bits-ai-sre/)
-- [S5 · Square — September 2023 incident summary](https://developer.squareup.com/blog/incident-summary-2023-09-07/)
 
 Vendor documentation is not a competitive benchmark. No new live request was made for this revision.

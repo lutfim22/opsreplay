@@ -1,36 +1,36 @@
-# OpsReplay — Visual Hackathon Demo
+# OpsReplay — Demo
 
-Solo project. Scenario first; narrative is in Presenter Notes.
+Audience material is English. Indonesian narration is provided separately in the local demo bundle. The verified story uses simulated device events; GitHub remains an additional implemented adapter with no software-to-device mapping. No alternative API is integrated yet.
 
 ## 1. The store is open. A device goes offline.
 
 An illustrative scenario for a small retail business
 
-DEVICE OFFLINE · Where do I start? · Power? · Connection? · Software?
+DEVICE OFFLINE · Where do I start? · Power? · Connection? · Device?
 
-## 2. Two sources. One missing story.
+## 2. The offline alert is only the last clue.
 
-Device records and software changes need context.
+Reconstruct the sequence before deciding what to check.
 
-Device telemetry · 09:01:45   1850 W · 09:01:50   1720 W · 09:03:00   offline · GitHub activity · Commit · Pull request · Workflow run · ? · Real-world context: Square’s September 2023 outage disrupted seller services. [S5]
+Before the alert · 09:01:45   1850 W · 09:01:50   1720 W · Device: sim-plug-01 · The latest alert · 09:03:00   offline · Cause: unconfirmed · What evidence is missing? · ? · An event sequence helps investigation. Timing alone does not prove the cause.
 
 ## 3. Useful approaches already exist.
 
 A documentation-based comparison — not a performance benchmark.
 
-01 · Manual review · Open each source · Build the sequence · 02 / S2 · PagerDuty · Recent Changes · Changes in incident context · 03 / S3 · Datadog · Bits Investigation · AI + operational context · My experiment: a small, inspectable workflow for device + software evidence.
+01 · Manual review · Open each source · Build the sequence · 02 / S2 · PagerDuty · Recent Changes · Changes in incident context · 03 / S3 · Datadog · Bits Investigation · AI + operational context · OpsReplay: replay device events and inspect the evidence behind an AI response.
 
-## 4. OpsReplay connects the investigation.
+## 4. OpsReplay turns events into an investigation.
 
-Bring records together. Select events. Check the evidence.
+The verified demo follows one device through its event history.
 
-IoT · SIMULATED · GitHub · PUBLIC API · Unified Timeline · Source / Severity · Gemini · Observed facts · Hypotheses (unconfirmed) · Evidence chips · Evidence supports review. The operator decides.
+Device events · SIMULATED · Unified Timeline · Source / Severity · Gemini · Facts + hypotheses · Evidence chips · GitHub adapter is available separately. · Software-to-device mapping is not implemented.
 
-## 5. Built as a solo hackathon prototype.
+## 5. What the prototype implements.
 
 A working path, with clear module boundaries.
 
-Simulator · Fixed event fixtures · GitHub adapter · Public repository activity · Timeline · Source / Severity · Gemini adapter · Structured response · Validation · Schema + evidence IDs · Quota · Feature gate + Redis
+Simulator · Fixed event fixtures · GitHub adapter · Optional software context · Timeline · Source / Severity · Gemini adapter · Structured response · Validation · Schema + evidence IDs · Quota · Feature gate + Redis
 
 ## 6. Demo: replay one device going offline.
 
@@ -48,18 +48,15 @@ Protected Preview · recorded result · no new live request
 
 Evidence references are useful. They do not prove the root cause.
 
-CURRENT · IoT · SIMULATED · AI verification · One IoT-only request · Access · Protected Preview · NOT YET · Physical devices · Hardware adapter · Broader evaluation · Mixed-source cases · Public AI · Access + cost controls
+CURRENT · IoT · SIMULATED · AI verification · One IoT-only request · Access · Protected Preview · NOT YET · Physical devices · Hardware adapter · Relevant external context · Dependency mapping + adapter · Public AI · Access + cost controls
 
-## 9. Next: strengthen the evidence, then the view.
+## 9. Next: connect the right operational context.
 
-Small modules make the next experiment easier to change.
+Add a relevant source, then verify the combined investigation.
 
-01 · Real data · Hardware adapter · 02 · Replay cases · Expected facts + evidence · 03 · Optional 3D · Device location + status · OpsReplay: reconstruct the story. Check the evidence. · Future direction · 3D is not implemented
+01 · Cloud status · Map device dependencies · 02 · Replay cases · Expected facts + evidence · 03 · Real devices · Hardware adapter · OpsReplay: reconstruct the story. Check the evidence. · Future work · external context and optional 3D are not implemented
 
 ## Sources
 
 - [S2 · PagerDuty — Recent Changes](https://docs.pagerduty.com/ai-automation/aiops/recent-changes)
 - [S3 · Datadog — Bits Investigation](https://www.datadoghq.com/blog/bits-ai-sre/)
-- [S5 · Square — September 2023 incident summary](https://developer.squareup.com/blog/incident-summary-2023-09-07/)
-
-The public repository deck shows a text summary. The original owner screenshot remains in the local downloadable demo bundle and is not published here.
