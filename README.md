@@ -4,16 +4,14 @@ AI-powered Incident Investigation.
 
 Built with Next.js (App Router), TypeScript, Tailwind CSS, shadcn/ui and pnpm.
 
-## Hackathon and pilot documentation
+## Hackathon documentation
 
-Choose the document for your audience:
-
-- [Pilot Pitch](docs/HACKATHON_DEMO.md) / [printable HTML](docs/HACKATHON_DEMO.html): simple buyer-facing problem, real-world context, existing approaches, the demonstrated prototype, a proposed pilot and labelled future 3D concept.
-- [Product Brief and Pilot Proposal](docs/PRODUCT_BRIEF.md) / [printable HTML](docs/PRODUCT_BRIEF.html): source-backed positioning, fair comparison, benchmark plan, adaptation points, 3D decision gates and pilot scope.
-- [Presenter Notes](docs/PRESENTER_NOTES.md) / [printable HTML](docs/PRESENTER_NOTES.html): three-minute talk track, evidence preparation and buyer Q&A.
+- [Hackathon Demo](docs/HACKATHON_DEMO.md) / [printable HTML](docs/HACKATHON_DEMO.html): idea first, an illustrative small/medium-business context, problem and existing approaches, our solution, actual implementation, bounded scenario, recorded result and limitations.
+- [Presenter Notes](docs/PRESENTER_NOTES.md) / [printable HTML](docs/PRESENTER_NOTES.html): three-minute judge-facing story, evidence preparation and Q&A.
 - [Technical Handbook](docs/TECHNICAL_GUIDE.md) / [printable HTML](docs/TECHNICAL_GUIDE.html): 18 chapters on implementation, contracts, operations, verification and open release work.
+- [Business Product Brief](docs/PRODUCT_BRIEF.md) / [printable HTML](docs/PRODUCT_BRIEF.html): retained pilot-proposal reference, separate from the hackathon demo. Its 3D art is a labelled future concept.
 
-Download/open HTML with its included local `docs/assets` image, or read the Markdown in GitHub. No remote image/font/script is loaded and no AI request is made by the documents. The 3D scene is an AI-generated future concept, not an implemented feature or real customer system. Public Production AI remains OFF.
+Demo HTML is self-contained. The separate business-reference HTML uses the included local `docs/assets` image. Documents load no remote assets or AI requests. The demo uses saved evidence from a completed protected Preview request; public Production AI remains OFF.
 
 ## Getting started
 
