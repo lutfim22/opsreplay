@@ -4,13 +4,15 @@ AI-powered Incident Investigation.
 
 Built with Next.js (App Router), TypeScript, Tailwind CSS, shadcn/ui and pnpm.
 
-## Hackathon demo guide
+## Hackathon documentation
 
-Start with the [plain-language demo pack](docs/HACKATHON_DEMO.md) for the product story, verified evidence,
-2–3-minute presentation script, setup and limitations. The [visual guide](docs/HACKATHON_DEMO.html)
-adds user-flow and architecture diagrams, a technical appendix and a printable seven-page layout.
-Download/open the HTML in a browser; it is self-contained and makes no AI requests. Public Production AI
-remains disabled; the successful AI demo was performed on a protected Preview.
+Choose the document for your audience:
+
+- [Demo Deck](docs/HACKATHON_DEMO.md) / [printable HTML](docs/HACKATHON_DEMO.html): the problem, how the implemented features address it, a concrete incident and demonstrated value. No speaker script or onboarding material.
+- [Presenter Notes](docs/PRESENTER_NOTES.md) / [printable HTML](docs/PRESENTER_NOTES.html): the 2–3-minute talk track, access/fallback preparation and Q&A.
+- [Technical Handbook](docs/TECHNICAL_GUIDE.md) / [printable HTML](docs/TECHNICAL_GUIDE.html): 18 chapters covering architecture, contracts, quotas, configuration, onboarding, diagnosis, evidence and release limitations.
+
+HTML documents are self-contained: download/open them in a browser and print to PDF. They load no remote assets or AI requests. Public Production AI remains OFF; the verified AI result came from a protected Preview.
 
 ## Getting started
 
@@ -41,7 +43,7 @@ distinct from **SIMULATED** IoT data. Data comes from the server-side Route Hand
   Public repositories work without it. Set it in `.env.local`.
 
 ### Limitations
-- Unauthenticated GitHub API limit is 60 requests/hour per IP; each load uses 3 requests. Rate limits are shown in the UI.
+- Unauthenticated GitHub API limit is 60 requests/hour per IP; a complete load normally uses 4 upstream requests (repository metadata plus 3 activity collections). Rate limits are shown in the UI.
 - Private, missing or inaccessible repositories return a "not found" state; no mock data is substituted on failure.
 - Only the latest 30 commits, PRs and workflow runs are fetched; no pagination, no webhooks, no OAuth, no storage.
 - If Actions is disabled, commits and PRs are still shown with a warning.
