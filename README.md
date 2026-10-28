@@ -4,6 +4,14 @@ AI-powered Incident Investigation.
 
 Built with Next.js (App Router), TypeScript, Tailwind CSS, shadcn/ui and pnpm.
 
+## Hackathon demo guide
+
+Start with the [plain-language demo pack](docs/HACKATHON_DEMO.md) for the product story, verified evidence,
+2–3-minute presentation script, setup and limitations. The [visual guide](docs/HACKATHON_DEMO.html)
+adds user-flow and architecture diagrams, a technical appendix and a printable seven-page layout.
+Download/open the HTML in a browser; it is self-contained and makes no AI requests. Public Production AI
+remains disabled; the successful AI demo was performed on a protected Preview.
+
 ## Getting started
 
 ```bash
